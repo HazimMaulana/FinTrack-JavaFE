@@ -35,7 +35,7 @@ public class HomePage extends JPanel {
         header.add(title);
         header.add(subtitle);
         // Place header in page NORTH with a small left gap from the sidebar
-        header.setBorder(new EmptyBorder(16, 16, 16, 16));
+        header.setBorder(new EmptyBorder(16, 12, 16, 16));
         add(header, BorderLayout.NORTH);
 
         // Summary cards grid (4 cols)
