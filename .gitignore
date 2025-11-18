@@ -1,0 +1,23 @@
+# Java build outputs
+/bin/
+/out/
+/target/
+*.class
+
+# IDEs and editors
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Misc
+node_modules/
