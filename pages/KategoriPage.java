@@ -31,6 +31,7 @@ public class KategoriPage extends JPanel {
     private JTextField formNameField;
     private JTextField formIconField;
     private JPanel summaryCards;
+    private JLabel loadingLabel;
 
     public KategoriPage() {
         setLayout(new BorderLayout());
@@ -150,10 +151,20 @@ public class KategoriPage extends JPanel {
         root.add(dualPanel);
         root.add(Box.createVerticalGlue());
 
+        // Loading indicator
+        loadingLabel = new JLabel("Memuat data...");
+        loadingLabel.setForeground(color(37, 99, 235));
+        loadingLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        loadingLabel.setVisible(false);
+        root.add(loadingLabel);
+
         // Initial data load
         loadCategoriesFromStore();
         updateSummaryCards();
         renderCategoryList();
+        
+        // Load data from backend
+        loadDataFromBackend();
     }
 
     private void onCategoryUpdate(CategoryStore.Snapshot snapshot) {
@@ -319,12 +330,24 @@ public class KategoriPage extends JPanel {
                 incomeCategories.add(cat);
             }
         }
-        CategoryStore.addCategory(type, name);
-        editMode = false;
-        editingIndex = -1;
-        editingIncome = false;
-        renderCategoryList();
-        rightCards.show(rightPanelCards, "stats");
+        
+        showLoading(true);
+        CategoryStore.addCategory(type, name,
+            () -> {
+                // onSuccess
+                showLoading(false);
+                editMode = false;
+                editingIndex = -1;
+                editingIncome = false;
+                renderCategoryList();
+                rightCards.show(rightPanelCards, "stats");
+            },
+            error -> {
+                // onError
+                showLoading(false);
+                JOptionPane.showMessageDialog(this, "Gagal menyimpan kategori: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        );
     }
 
     private void ensureIndex(List<Category> list, int index, Category value){
@@ -411,14 +434,39 @@ public class KategoriPage extends JPanel {
         });
         JButton deleteBtn = actionIconButton("Hapus");
         deleteBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, "Hapus kategori ini?", "Konfirmasi", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+            
+            showLoading(true);
             if ("income".equals(selectedType)) {
                 incomeCategories.remove(category);
-                CategoryStore.removeCategory(CategoryStore.INCOME, category.name);
+                CategoryStore.removeCategory(CategoryStore.INCOME, category.name,
+                    () -> {
+                        // onSuccess
+                        showLoading(false);
+                        renderCategoryList();
+                    },
+                    error -> {
+                        // onError
+                        showLoading(false);
+                        JOptionPane.showMessageDialog(this, "Gagal menghapus kategori: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                );
             } else {
                 expenseCategories.remove(category);
-                CategoryStore.removeCategory(CategoryStore.EXPENSE, category.name);
+                CategoryStore.removeCategory(CategoryStore.EXPENSE, category.name,
+                    () -> {
+                        // onSuccess
+                        showLoading(false);
+                        renderCategoryList();
+                    },
+                    error -> {
+                        // onError
+                        showLoading(false);
+                        JOptionPane.showMessageDialog(this, "Gagal menghapus kategori: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                );
             }
-            renderCategoryList();
         });
         actions.add(editBtn);
         actions.add(deleteBtn);
@@ -690,6 +738,30 @@ public class KategoriPage extends JPanel {
         panel.add(Box.createVerticalStrut(4));
         panel.add(field);
         return panel;
+    }
+
+    private void showLoading(boolean show) {
+        if (loadingLabel != null) {
+            loadingLabel.setVisible(show);
+        }
+        if (saveButton != null) {
+            saveButton.setEnabled(!show);
+        }
+    }
+
+    private void loadDataFromBackend() {
+        showLoading(true);
+        CategoryStore.loadFromBackend(
+            () -> {
+                // onSuccess
+                showLoading(false);
+            },
+            error -> {
+                // onError
+                showLoading(false);
+                JOptionPane.showMessageDialog(this, "Gagal memuat data: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        );
     }
 
     private static Color color(int r, int g, int b) { return new Color(r, g, b); }

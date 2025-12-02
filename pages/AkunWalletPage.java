@@ -11,6 +11,7 @@ public class AkunWalletPage extends JPanel {
     private final JLabel walletCountLabel;
     private final JLabel cashLabel;
     private final JLabel creditLabel;
+    private JLabel loadingLabel;
     private AccountStore.Snapshot snapshot = AccountStore.snapshot();
 
     public AkunWalletPage() {
@@ -88,8 +89,18 @@ public class AkunWalletPage extends JPanel {
         root.add(accountsCard);
         root.add(Box.createVerticalGlue());
 
+        // Loading indicator
+        loadingLabel = new JLabel("Memuat data...");
+        loadingLabel.setForeground(color(37, 99, 235));
+        loadingLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        loadingLabel.setVisible(false);
+        root.add(loadingLabel);
+
         AccountStore.addListener(this::renderSnapshot);
         renderSnapshot(AccountStore.snapshot());
+        
+        // Load data from backend
+        loadDataFromBackend();
     }
 
     private void promptAddAccount() {
@@ -121,7 +132,18 @@ public class AkunWalletPage extends JPanel {
             return;
         }
 
-        AccountStore.addAccount(name, number.isEmpty() ? "-" : number, balance, type);
+        showLoading(true);
+        AccountStore.addAccount(name, number.isEmpty() ? "-" : number, balance, type,
+            accountId -> {
+                // onSuccess
+                showLoading(false);
+            },
+            error -> {
+                // onError
+                showLoading(false);
+                JOptionPane.showMessageDialog(this, "Gagal menambah akun: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        );
     }
 
     private void renderSnapshot(AccountStore.Snapshot snap) {
@@ -170,7 +192,23 @@ public class AkunWalletPage extends JPanel {
         menuBtn.setFocusPainted(false);
         JPopupMenu menu = new JPopupMenu();
         JMenuItem deleteItem = new JMenuItem("Hapus akun");
-        deleteItem.addActionListener(e -> AccountStore.removeAccount(acc.id()));
+        deleteItem.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, "Hapus akun ini?", "Konfirmasi", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+            
+            showLoading(true);
+            AccountStore.removeAccount(acc.id(),
+                () -> {
+                    // onSuccess
+                    showLoading(false);
+                },
+                error -> {
+                    // onError
+                    showLoading(false);
+                    JOptionPane.showMessageDialog(this, "Gagal menghapus akun: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            );
+        });
         menu.add(deleteItem);
         menuBtn.addActionListener(e -> menu.show(menuBtn, 0, menuBtn.getHeight()));
         top.add(menuBtn, BorderLayout.EAST);
@@ -244,6 +282,27 @@ public class AkunWalletPage extends JPanel {
         String digits = text.replaceAll("[^0-9]", "");
         if (digits.isEmpty()) return 0;
         try { return Long.parseLong(digits); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private void showLoading(boolean show) {
+        if (loadingLabel != null) {
+            loadingLabel.setVisible(show);
+        }
+    }
+
+    private void loadDataFromBackend() {
+        showLoading(true);
+        AccountStore.loadFromBackend(
+            () -> {
+                // onSuccess
+                showLoading(false);
+            },
+            error -> {
+                // onError
+                showLoading(false);
+                JOptionPane.showMessageDialog(this, "Gagal memuat data: " + error, "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        );
     }
 
     private static Color color(int r, int g, int b) { return new Color(r, g, b); }

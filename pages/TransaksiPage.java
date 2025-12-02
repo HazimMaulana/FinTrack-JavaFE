@@ -29,9 +29,11 @@ public class TransaksiPage extends JPanel {
     private JTextField nominalField;
     private JTextField descField;
     private JLabel pageInfo;
+    private JLabel loadingLabel;
     private CategoryStore.Snapshot categorySnapshot = CategoryStore.snapshot();
     private final Map<String, String> accountTypeMap = new HashMap<>();
     private final List<String> rowIds = new ArrayList<>();
+
     public TransaksiPage() {
         setLayout(new BorderLayout());
 
@@ -70,7 +72,10 @@ public class TransaksiPage extends JPanel {
         JPanel dualPanel = new JPanel(new GridBagLayout());
         dualPanel.setOpaque(false);
         GridBagConstraints gc = new GridBagConstraints();
-        gc.gridx = 0; gc.gridy = 0; gc.weightx = 0.6; gc.weighty = 1;
+        gc.gridx = 0;
+        gc.gridy = 0;
+        gc.weightx = 0.6;
+        gc.weighty = 1;
         gc.fill = GridBagConstraints.BOTH;
         gc.insets = new Insets(0, 0, 0, 12);
 
@@ -78,7 +83,7 @@ public class TransaksiPage extends JPanel {
         RoundPanel tableCard = new RoundPanel(10, Color.WHITE, color(226, 232, 240));
         tableCard.setLayout(new BorderLayout());
         tableCard.setBorder(new EmptyBorder(16, 16, 16, 16));
-        
+
         // Toolbar
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         toolbar.setOpaque(false);
@@ -109,29 +114,25 @@ public class TransaksiPage extends JPanel {
         tableCard.add(toolbar, BorderLayout.NORTH);
 
         // Table
-        String[] cols = {"Tanggal", "Keterangan", "Kategori", "Akun", "Debit", "Kredit", "Saldo", "Aksi"};
+        String[] cols = { "Tanggal", "Keterangan", "Kategori", "Akun", "Saldo", "Aksi" };
         tableModel = new DefaultTableModel(new Object[0][0], cols) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
+            @Override
+            public boolean isCellEditable(int r, int c) {
+                return false;
+            }
         };
         table = new JTable(tableModel) {
-            @Override public Component prepareRenderer(TableCellRenderer r, int row, int col) {
+            @Override
+            public Component prepareRenderer(TableCellRenderer r, int row, int col) {
                 Component c = super.prepareRenderer(r, row, col);
                 if (!isRowSelected(row)) {
                     c.setBackground(row % 2 == 0 ? new Color(248, 250, 252) : Color.WHITE);
                 }
-                if (col == 4) { // Debit
-                    JLabel l = (JLabel) c;
-                    l.setHorizontalAlignment(SwingConstants.RIGHT);
-                    l.setForeground(l.getText().equals("-") ? new Color(71, 85, 105) : new Color(5, 150, 105));
-                } else if (col == 5) { // Kredit
-                    JLabel l = (JLabel) c;
-                    l.setHorizontalAlignment(SwingConstants.RIGHT);
-                    l.setForeground(l.getText().equals("-") ? new Color(71, 85, 105) : new Color(220, 38, 38));
-                } else if (col == 6) { // Saldo
+                if (col == 4) { // Saldo
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.RIGHT);
                     l.setForeground(new Color(30, 41, 59));
-                } else if (col == 7) {
+                } else if (col == 5) { // Aksi
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.CENTER);
                     l.setForeground(new Color(37, 99, 235));
@@ -144,12 +145,12 @@ public class TransaksiPage extends JPanel {
         table.getTableHeader().setReorderingAllowed(false);
         table.setRowHeight(28);
         table.setShowGrid(false);
-        table.getColumnModel().getColumn(7).setPreferredWidth(120);
+        table.getColumnModel().getColumn(5).setPreferredWidth(120);
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 int col = table.columnAtPoint(e.getPoint());
-                if (col == 7) {
+                if (col == 5) { // Kolom Aksi
                     int row = table.rowAtPoint(e.getPoint());
                     Rectangle cell = table.getCellRect(row, col, true);
                     int xWithin = e.getX() - cell.x;
@@ -189,7 +190,9 @@ public class TransaksiPage extends JPanel {
         dualPanel.add(tableCard, gc);
 
         // Right: Form card
-        gc.gridx = 1; gc.weightx = 0.4; gc.insets = new Insets(0, 0, 0, 0);
+        gc.gridx = 1;
+        gc.weightx = 0.4;
+        gc.insets = new Insets(0, 0, 0, 0);
         RoundPanel formCard = new RoundPanel(10, Color.WHITE, color(226, 232, 240));
         formCard.setLayout(new BorderLayout());
         formCard.setBorder(new EmptyBorder(16, 16, 16, 16));
@@ -221,7 +224,7 @@ public class TransaksiPage extends JPanel {
         dateField = new JTextField("2025-11-18");
         formFields.add(createFormField("Tanggal", dateField));
         formFields.add(Box.createVerticalStrut(12));
-        typeCombo = new JComboBox<>(new String[]{"Pengeluaran", "Pemasukan"});
+        typeCombo = new JComboBox<>(new String[] { "Pengeluaran", "Pemasukan" });
         ComboUtil.apply(typeCombo);
         formFields.add(createFormField("Tipe Transaksi", typeCombo));
         formFields.add(Box.createVerticalStrut(12));
@@ -252,7 +255,7 @@ public class TransaksiPage extends JPanel {
         descField = new JTextField();
         formFields.add(createFormField("Keterangan", descField));
         formFields.add(Box.createVerticalStrut(12));
-        
+
         JPanel notesPanel = new JPanel();
         notesPanel.setLayout(new BoxLayout(notesPanel, BoxLayout.Y_AXIS));
         notesPanel.setOpaque(false);
@@ -262,9 +265,8 @@ public class TransaksiPage extends JPanel {
         notesLabel.setAlignmentX(LEFT_ALIGNMENT);
         JTextArea notesArea = new JTextArea(3, 20);
         notesArea.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(color(203, 213, 225)),
-            new EmptyBorder(6, 8, 6, 8)
-        ));
+                BorderFactory.createLineBorder(color(203, 213, 225)),
+                new EmptyBorder(6, 8, 6, 8)));
         notesPanel.add(notesLabel);
         notesPanel.add(Box.createVerticalStrut(4));
         JScrollPane notesScroll = new JScrollPane(notesArea);
@@ -273,6 +275,14 @@ public class TransaksiPage extends JPanel {
         formFields.add(notesPanel);
 
         formCard.add(formFields, BorderLayout.CENTER);
+
+        // Loading indicator
+        loadingLabel = new JLabel("Memproses...");
+        loadingLabel.setForeground(color(37, 99, 235));
+        loadingLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        loadingLabel.setVisible(false);
+        loadingLabel.setBorder(new EmptyBorder(8, 0, 8, 0));
+        formFields.add(loadingLabel);
 
         JPanel formButtons = new JPanel(new GridLayout(1, 2, 8, 0));
         formButtons.setOpaque(false);
@@ -299,6 +309,9 @@ public class TransaksiPage extends JPanel {
         // Load initial data from store
         loadFromStore(TransactionStore.snapshot());
         TransactionStore.addListener(this::loadFromStore);
+
+        // Load data from backend
+        loadDataFromBackend();
     }
 
     private JPanel createFormField(String label, JComponent field) {
@@ -346,30 +359,55 @@ public class TransaksiPage extends JPanel {
         String nominalText = nominalField.getText().trim();
 
         if (date.isEmpty() || desc.isEmpty() || nominalText.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Tanggal, Keterangan, dan Nominal harus diisi.", "Validasi", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Tanggal, Keterangan, dan Nominal harus diisi.", "Validasi",
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         long amount = parseNumber(nominalText);
         if (amount <= 0) {
-            JOptionPane.showMessageDialog(this, "Nominal harus lebih besar dari 0.", "Validasi", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Nominal harus lebih besar dari 0.", "Validasi",
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 
+        // Show loading indicator
+        showLoading(true);
+
         if (editMode && editingRow >= 0 && editingRow < tableModel.getRowCount()) {
             String id = rowIds.get(editingRow);
-            TransactionStore.updateTransaction(id, date, type, category, accountLabel, accountType, amount, desc);
+            TransactionStore.updateTransaction(id, date, type, category, accountLabel, accountType, amount, desc,
+                    () -> {
+                        // onSuccess
+                        showLoading(false);
+                        startNewTransaction();
+                    },
+                    error -> {
+                        // onError
+                        showLoading(false);
+                        JOptionPane.showMessageDialog(this, "Gagal mengupdate transaksi: " + error, "Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    });
         } else {
-            TransactionStore.addTransaction(date, type, category, accountLabel, accountType, amount, desc);
+            TransactionStore.addTransaction(date, type, category, accountLabel, accountType, amount, desc,
+                    transactionId -> {
+                        // onSuccess
+                        showLoading(false);
+                        startNewTransaction();
+                    },
+                    error -> {
+                        // onError
+                        showLoading(false);
+                        JOptionPane.showMessageDialog(this, "Gagal menambah transaksi: " + error, "Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    });
         }
-
-        startNewTransaction();
-        loadFromStore(TransactionStore.snapshot());
     }
 
     private long parseNumber(String text) {
         String digits = text.replaceAll("[^0-9]", "");
-        if (digits.isEmpty()) return 0;
+        if (digits.isEmpty())
+            return 0;
         try {
             return Long.parseLong(digits);
         } catch (NumberFormatException e) {
@@ -395,7 +433,8 @@ public class TransaksiPage extends JPanel {
     }
 
     private void loadRowForEdit(int row) {
-        if (row < 0 || row >= tableModel.getRowCount()) return;
+        if (row < 0 || row >= tableModel.getRowCount())
+            return;
         editingRow = row;
         editMode = true;
         formTitle.setText("Edit Transaksi");
@@ -409,25 +448,47 @@ public class TransaksiPage extends JPanel {
             accountCombo.setSelectedItem(accountVal.toString());
         }
 
-        String debit = tableModel.getValueAt(row, 4).toString();
-        String credit = tableModel.getValueAt(row, 5).toString();
-        boolean isIncome = !debit.equals("-");
-        typeCombo.setSelectedIndex(isIncome ? 1 : 0);
-        String amountStr = isIncome ? debit : credit;
-        nominalField.setText(String.valueOf(parseNumber(amountStr)));
+        // Get transaction from store to determine type and amount
+        if (row < rowIds.size()) {
+            String id = rowIds.get(row);
+            TransactionStore.Snapshot snap = TransactionStore.snapshot();
+            for (TransactionStore.Transaction tx : snap.transactions()) {
+                if (tx.id().equals(id)) {
+                    boolean isIncome = tx.isIncome();
+                    typeCombo.setSelectedIndex(isIncome ? 1 : 0);
+                    nominalField.setText(String.valueOf(tx.amount()));
+                    break;
+                }
+            }
+        }
     }
 
     private void deleteRow(int row) {
-        if (row < 0 || row >= tableModel.getRowCount()) return;
+        if (row < 0 || row >= tableModel.getRowCount())
+            return;
         if (row < rowIds.size()) {
             String id = rowIds.get(row);
-            TransactionStore.removeTransaction(id);
+            int confirm = JOptionPane.showConfirmDialog(this, "Hapus transaksi ini?", "Konfirmasi",
+                    JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION)
+                return;
+
+            showLoading(true);
+            TransactionStore.removeTransaction(id,
+                    () -> {
+                        // onSuccess
+                        showLoading(false);
+                        if (editingRow == row) {
+                            startNewTransaction();
+                        }
+                    },
+                    error -> {
+                        // onError
+                        showLoading(false);
+                        JOptionPane.showMessageDialog(this, "Gagal menghapus transaksi: " + error, "Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    });
         }
-        tableModel.removeRow(row);
-        if (editingRow == row) {
-            startNewTransaction();
-        }
-        loadFromStore(TransactionStore.snapshot());
     }
 
     private void updatePagination() {
@@ -437,7 +498,8 @@ public class TransaksiPage extends JPanel {
     }
 
     private void refreshCategoryCombo() {
-        if (categoryCombo == null || categorySnapshot == null) return;
+        if (categoryCombo == null || categorySnapshot == null)
+            return;
         Object selectedType = typeCombo.getSelectedItem();
         boolean isIncome = selectedType != null && "Pemasukan".equalsIgnoreCase(selectedType.toString());
         categoryCombo.removeAllItems();
@@ -456,25 +518,47 @@ public class TransaksiPage extends JPanel {
             boolean isIncome = tx.isIncome();
             long amount = tx.amount();
             runningBalance += isIncome ? amount : -amount;
-            String debit = isIncome ? formatWithType(tx.accountType(), amount) : "-";
-            String credit = isIncome ? "-" : formatWithType(tx.accountType(), amount);
             String desc = tx.description() == null || tx.description().isBlank() ? "-" : tx.description();
-            tableModel.addRow(new Object[]{
-                tx.date().toString(),
-                desc,
-                tx.category(),
-                tx.accountName(),
-                debit,
-                credit,
-                formatRupiah(runningBalance),
-                "Edit | Hapus"
+            tableModel.addRow(new Object[] {
+                    tx.date().toString(),
+                    desc,
+                    tx.category(),
+                    tx.accountName(),
+                    formatRupiah(runningBalance),
+                    "Edit | Hapus"
             });
             rowIds.add(tx.id());
         }
         updatePagination();
     }
 
-    private static Color color(int r, int g, int b) { return new Color(r, g, b); }
+    private void showLoading(boolean show) {
+        if (loadingLabel != null) {
+            loadingLabel.setVisible(show);
+        }
+        if (saveBtn != null) {
+            saveBtn.setEnabled(!show);
+        }
+    }
+
+    private void loadDataFromBackend() {
+        showLoading(true);
+        TransactionStore.loadFromBackend(
+                () -> {
+                    // onSuccess
+                    showLoading(false);
+                },
+                error -> {
+                    // onError
+                    showLoading(false);
+                    JOptionPane.showMessageDialog(this, "Gagal memuat data: " + error, "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                });
+    }
+
+    private static Color color(int r, int g, int b) {
+        return new Color(r, g, b);
+    }
 
     static class RoundPanel extends JPanel {
         private final int arc;

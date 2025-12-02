@@ -1,362 +1,534 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import utils.SocketClient;
+import utils.SessionManager;
 
+/**
+ * AuthPage provides login and registration UI.
+ * Handles user authentication with backend server.
+ */
 public class AuthPage extends JPanel {
-    private static final String LOGIN = "login";
-    private static final String SIGNUP = "signup";
+    private final JTextField usernameField;
+    private final JPasswordField passwordField;
+    private final JButton loginButton;
+    private final JButton toggleButton;
+    private final JLabel errorLabel;
+    private final JLabel formTitle;
+    private final Runnable onLoginSuccess;
 
-    private final CardLayout formLayout = new CardLayout();
-    private final JPanel formStack = new JPanel(formLayout);
-    private final Runnable onAuthenticated;
+    private boolean isRegisterMode;
 
-    private RoundedTextField loginEmail;
-    private RoundedPasswordField loginPassword;
-    private RoundedTextField signupName;
-    private RoundedTextField signupEmail;
-    private RoundedPasswordField signupPassword;
-    private RoundedPasswordField signupConfirm;
-    private JLabel loginStatus;
-    private JLabel signupStatus;
+    /**
+     * Create AuthPage with login success callback.
+     * 
+     * @param onLoginSuccess callback to invoke when login succeeds
+     */
+    public AuthPage(Runnable onLoginSuccess) {
+        this.onLoginSuccess = onLoginSuccess;
+        this.isRegisterMode = false;
 
-    public AuthPage(Runnable onAuthenticated) {
-        this.onAuthenticated = onAuthenticated;
-        setLayout(new BorderLayout());
-        setOpaque(false);
+        setLayout(new GridBagLayout());
+        setBackground(new Color(248, 250, 252)); // slate-50
 
-        JPanel gradient = new JPanel(new BorderLayout()) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                // Gradient from top-left to bottom-right with modern blue shades
-                GradientPaint gp = new GradientPaint(0, 0, new Color(79, 70, 229), getWidth(), getHeight(), new Color(99, 102, 241));
-                g2.setPaint(gp);
-                g2.fillRect(0, 0, getWidth(), getHeight());
-                // Decorative orbs with better positioning
-                g2.setColor(new Color(255, 255, 255, 25));
-                g2.fillOval(-80, -40, 300, 300);
-                g2.fillOval(getWidth() - 250, getHeight() - 250, 350, 350);
-                // Additional accent orbs
-                g2.setColor(new Color(147, 51, 234, 20));
-                g2.fillOval(getWidth() / 2 - 100, -100, 200, 200);
-                g2.dispose();
+        // Create centered card panel
+        RoundPanel card = new RoundPanel(12, Color.WHITE, new Color(226, 232, 240));
+        card.setLayout(new BorderLayout());
+        card.setBorder(new EmptyBorder(32, 32, 32, 32));
+        card.setPreferredSize(new Dimension(400, 500));
+
+        // Header with icon and title
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.setOpaque(false);
+        header.setBorder(new EmptyBorder(0, 0, 24, 0));
+
+        // App icon
+        JPanel iconPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        iconPanel.setOpaque(false);
+        JLabel iconLabel = new JLabel(new WalletIcon());
+        iconLabel.setForeground(new Color(37, 99, 235)); // blue-600
+        iconPanel.add(iconLabel);
+
+        // Title
+        formTitle = new JLabel("Login ke FinTrack");
+        formTitle.setForeground(new Color(30, 41, 59)); // slate-800
+        formTitle.setFont(formTitle.getFont().deriveFont(Font.BOLD, 24f));
+        formTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Subtitle
+        JLabel subtitle = new JLabel("Kelola keuangan Anda dengan mudah");
+        subtitle.setForeground(new Color(71, 85, 105)); // slate-600
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        subtitle.setBorder(new EmptyBorder(8, 0, 0, 0));
+
+        header.add(iconPanel);
+        header.add(formTitle);
+        header.add(subtitle);
+
+        card.add(header, BorderLayout.NORTH);
+
+        // Form fields
+        JPanel formFields = new JPanel();
+        formFields.setLayout(new BoxLayout(formFields, BoxLayout.Y_AXIS));
+        formFields.setOpaque(false);
+
+        // Username field
+        usernameField = new JTextField();
+        usernameField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        usernameField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(203, 213, 225), 1),
+                new EmptyBorder(8, 12, 8, 12)));
+        formFields.add(createFormField("Username", usernameField));
+        formFields.add(Box.createVerticalStrut(16));
+
+        // Password field
+        passwordField = new JPasswordField();
+        passwordField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        passwordField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(203, 213, 225), 1),
+                new EmptyBorder(8, 12, 8, 12)));
+        formFields.add(createFormField("Password", passwordField));
+        formFields.add(Box.createVerticalStrut(8));
+
+        // Error label
+        errorLabel = new JLabel(" ");
+        errorLabel.setForeground(new Color(220, 38, 38)); // red-600
+        errorLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        errorLabel.setFont(errorLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        formFields.add(errorLabel);
+        formFields.add(Box.createVerticalStrut(16));
+
+        // Login button
+        loginButton = new RoundedButton("Login", true);
+        loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        loginButton.addActionListener(e -> {
+            if (isRegisterMode) {
+                handleRegister();
+            } else {
+                handleLogin();
             }
-        };
-        gradient.setBorder(new EmptyBorder(40, 40, 40, 40));
-        add(gradient, BorderLayout.CENTER);
+        });
+        formFields.add(loginButton);
+        formFields.add(Box.createVerticalStrut(16));
 
-        JPanel glass = new JPanel(new GridBagLayout()) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                // Subtle shadow
-                g2.setColor(new Color(0, 0, 0, 30));
-                g2.fillRoundRect(4, 4, getWidth() - 4, getHeight() - 4, 32, 32);
-                // Glass background
-                g2.setColor(new Color(255, 255, 255, 35));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 32, 32);
-                // Border
-                g2.setColor(new Color(255, 255, 255, 80));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 32, 32);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        glass.setOpaque(false);
-        glass.setBorder(new EmptyBorder(32, 32, 32, 32));
-        gradient.add(glass, BorderLayout.CENTER);
+        // Toggle mode link
+        JPanel togglePanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        togglePanel.setOpaque(false);
+        JLabel toggleLabel = new JLabel("Belum punya akun? ");
+        toggleLabel.setForeground(new Color(71, 85, 105));
+        toggleButton = new JButton("Daftar di sini");
+        toggleButton.setForeground(new Color(37, 99, 235)); // blue-600
+        toggleButton.setBorderPainted(false);
+        toggleButton.setContentAreaFilled(false);
+        toggleButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        toggleButton.setFocusPainted(false);
+        toggleButton.addActionListener(e -> toggleMode());
+        togglePanel.add(toggleLabel);
+        togglePanel.add(toggleButton);
+        formFields.add(togglePanel);
 
-        GridBagConstraints gc = new GridBagConstraints();
-        gc.gridx = 0;
-        gc.gridy = 0;
-        gc.weightx = 1;
-        gc.weighty = 1;
-        gc.fill = GridBagConstraints.BOTH;
-        gc.insets = new Insets(16, 16, 16, 16);
+        card.add(formFields, BorderLayout.CENTER);
 
-        JPanel hero = buildHero();
-        glass.add(hero, gc);
+        // Add card to center of page
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1;
+        gbc.weighty = 1;
+        gbc.anchor = GridBagConstraints.CENTER;
+        add(card, gbc);
 
-        JPanel authCard = buildAuthCard();
-        gc.gridx = 1;
-        gc.weightx = 1.1;
-        glass.add(authCard, gc);
-
-        showLogin();
+        // Add Enter key support
+        usernameField.addActionListener(e -> passwordField.requestFocus());
+        passwordField.addActionListener(e -> loginButton.doClick());
     }
 
-    public void resetFields() {
-        loginEmail.setText("");
-        loginPassword.setText("");
-        signupName.setText("");
-        signupEmail.setText("");
-        signupPassword.setText("");
-        signupConfirm.setText("");
-        loginStatus.setText("");
-        signupStatus.setText("");
-        showLogin();
-    }
-
-    private JPanel buildHero() {
+    /**
+     * Create form field with label and input component.
+     */
+    private JPanel createFormField(String label, JComponent field) {
         JPanel panel = new JPanel();
-        panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(new EmptyBorder(20, 24, 20, 24));
+        panel.setOpaque(false);
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Logo badge with better styling
-        JLabel badge = new JLabel("💰 FinTrack");
-        badge.setForeground(Color.WHITE);
-        badge.setFont(badge.getFont().deriveFont(Font.BOLD, badge.getFont().getSize2D() + 12f));
-        badge.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel lbl = new JLabel(label);
+        lbl.setForeground(new Color(71, 85, 105)); // slate-600
+        lbl.setFont(lbl.getFont().deriveFont(Font.PLAIN, 14f));
+        lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel headline = new JLabel("<html>Kelola finansial<br/>lebih <span style='color: #FDE047;'>cerdas</span>.</html>");
-        headline.setForeground(Color.WHITE);
-        headline.setFont(headline.getFont().deriveFont(Font.BOLD, headline.getFont().getSize2D() + 22f));
-        headline.setBorder(new EmptyBorder(24, 0, 16, 0));
-        headline.setAlignmentX(Component.LEFT_ALIGNMENT);
+        field.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel subtitle = new JLabel("<html><div style='line-height: 1.6;'>Dashboard yang kaya insight, kategori rapi, dan laporan modern dalam satu aplikasi desktop yang powerful.</div></html>");
-        subtitle.setForeground(new Color(226, 232, 240, 230));
-        subtitle.setBorder(new EmptyBorder(0, 0, 28, 0));
-        subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, subtitle.getFont().getSize2D() + 3f));
-        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        panel.add(badge);
-        panel.add(headline);
-        panel.add(subtitle);
-
-        // Features with icons
-        panel.add(heroStat("⚡ 5 Menit", "Setup cepat tanpa konfigurasi rumit", new Color(96, 165, 250)));
-        panel.add(Box.createVerticalStrut(12));
-        panel.add(heroStat("📊 Realtime", "Pantau arus kas & laporan secara live", new Color(167, 139, 250)));
-        panel.add(Box.createVerticalStrut(12));
-        panel.add(heroStat("🔒 Aman", "Data tersimpan lokal, privasi terjaga", new Color(134, 239, 172)));
+        panel.add(lbl);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(field);
 
         return panel;
     }
 
-    private JPanel heroStat(String title, String desc, Color dotColor) {
-        JPanel p = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(255, 255, 255, 15));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                g2.dispose();
-                super.paintComponent(g);
+    /**
+     * Handle login button click.
+     * Validates input, sends LOGIN command to backend.
+     * On success: saves session and calls onLoginSuccess callback.
+     * On error: displays error message.
+     */
+    private void handleLogin() {
+        String username = usernameField.getText().trim();
+        String password = new String(passwordField.getPassword()).trim();
+
+        // Validate fields
+        if (username.isEmpty() || password.isEmpty()) {
+            showError("Username dan password harus diisi");
+            return;
+        }
+
+        // Clear error
+        clearError();
+
+        // Disable button during operation
+        loginButton.setEnabled(false);
+        loginButton.setText("Loading...");
+
+        // Execute in background thread
+        new Thread(() -> {
+            try {
+                SocketClient client = SocketClient.getInstance();
+                String command = client.formatCommand("LOGIN", username, password);
+
+                // Debug logging
+                System.out.println("[AuthPage] Sending command: " + command);
+
+                String response = client.sendCommand(command);
+
+                // Debug logging
+                System.out.println("[AuthPage] Received response: " + response);
+
+                // Parse response
+                if (client.isErrorResponse(response)) {
+                    String errorMsg = client.getErrorMessage(response);
+                    System.out.println("[AuthPage] Error response detected: " + errorMsg);
+                    SwingUtilities.invokeLater(() -> {
+                        showError(errorMsg);
+                        loginButton.setEnabled(true);
+                        loginButton.setText(isRegisterMode ? "Daftar" : "Login");
+                    });
+                    return;
+                }
+
+                // Extract session token from OK response
+                String[] parts = client.parseResponse(response);
+                System.out.println("[AuthPage] Response parts: " + java.util.Arrays.toString(parts));
+
+                if (parts.length >= 2 && parts[0].equals("OK")) {
+                    String sessionToken = parts[1];
+                    System.out.println("[AuthPage] Login successful! Token: " + sessionToken);
+
+                    // Save session
+                    SessionManager sessionManager = SessionManager.getInstance();
+                    sessionManager.setSession(sessionToken, username);
+                    sessionManager.saveToFile();
+                    // Start realtime subscription
+                    try {
+                        SocketClient.getInstance().startSubscription();
+                    } catch (Exception subEx) {
+                        System.err.println("Warning: failed to start subscription: " + subEx.getMessage());
+                    }
+
+                    // Load all data from backend before showing dashboard
+                    loadAllDataFromBackend(() -> {
+                        // Call success callback on EDT after data loaded
+                        SwingUtilities.invokeLater(() -> {
+                            if (onLoginSuccess != null) {
+                                onLoginSuccess.run();
+                            }
+                        });
+                    });
+                } else if (response != null && response.startsWith("LOGIN_FAIL")) {
+                    System.out.println("[AuthPage] Login failed: " + response);
+                    SwingUtilities.invokeLater(() -> {
+                        showError("Username atau password salah");
+                        loginButton.setEnabled(true);
+                        loginButton.setText(isRegisterMode ? "Daftar" : "Login");
+                    });
+                } else {
+                    System.out.println("[AuthPage] Unexpected response format: " + response);
+                    SwingUtilities.invokeLater(() -> {
+                        showError("Format response tidak valid: " + response);
+                        loginButton.setEnabled(true);
+                        loginButton.setText(isRegisterMode ? "Daftar" : "Login");
+                    });
+                }
+            } catch (Exception e) {
+                System.err.println(
+                        "[AuthPage] Exception during login: " + e.getClass().getName() + " - " + e.getMessage());
+                e.printStackTrace();
+                SwingUtilities.invokeLater(() -> {
+                    showError("Gagal terhubung ke server: " + e.getMessage());
+                    loginButton.setEnabled(true);
+                    loginButton.setText(isRegisterMode ? "Daftar" : "Login");
+                });
             }
-        };
-        p.setOpaque(false);
-        p.setLayout(new BorderLayout());
-        p.setBorder(new EmptyBorder(14, 16, 14, 16));
-        JLabel t = new JLabel(title);
-        t.setForeground(Color.WHITE);
-        t.setFont(t.getFont().deriveFont(Font.BOLD, t.getFont().getSize2D() + 2f));
-        JLabel d = new JLabel(desc);
-        d.setForeground(new Color(226, 232, 240, 220));
-        d.setBorder(new EmptyBorder(6, 0, 0, 0));
-        d.setFont(d.getFont().deriveFont(Font.PLAIN, d.getFont().getSize2D() + 1f));
-        JPanel text = new JPanel();
-        text.setOpaque(false);
-        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
-        text.add(t);
-        text.add(d);
-        p.add(text, BorderLayout.CENTER);
-        return p;
+        }).start();
     }
 
-    private JPanel buildAuthCard() {
-        JPanel card = new JPanel();
-        card.setOpaque(false);
-        card.setLayout(new BorderLayout());
+    /**
+     * Handle register button click.
+     * Validates input, sends REGISTER command to backend.
+     * On success: automatically calls handleLogin().
+     * On error: displays error message.
+     */
+    private void handleRegister() {
+        String username = usernameField.getText().trim();
+        String password = new String(passwordField.getPassword()).trim();
 
-        RoundPanel wrapper = new RoundPanel();
-        wrapper.setLayout(new BorderLayout());
-        wrapper.setBorder(new EmptyBorder(32, 32, 32, 32));
-        card.add(wrapper, BorderLayout.CENTER);
-
-        formStack.setOpaque(false);
-        formStack.add(buildLoginForm(), LOGIN);
-        formStack.add(buildSignupForm(), SIGNUP);
-        wrapper.add(formStack, BorderLayout.CENTER);
-
-        return card;
-    }
-
-    private JPanel buildLoginForm() {
-        JPanel form = new JPanel();
-        form.setOpaque(false);
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-
-        JLabel title = new JLabel("Masuk");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 8f));
-        title.setForeground(new Color(15, 23, 42));
-        title.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel subtitle = new JLabel("Selamat datang kembali! 👋");
-        subtitle.setForeground(new Color(100, 116, 139));
-        subtitle.setBorder(new EmptyBorder(6, 0, 24, 0));
-        subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, subtitle.getFont().getSize2D() + 1f));
-        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        loginEmail = new RoundedTextField("Email atau username");
-        loginPassword = new RoundedPasswordField("Kata sandi");
-
-        PrimaryButton loginBtn = new PrimaryButton("Masuk Sekarang");
-        loginBtn.addActionListener(e -> attemptLogin());
-
-        JPanel linkRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        linkRow.setOpaque(false);
-        linkRow.add(new JLabel("Belum punya akun? "));
-        linkRow.add(linkLabel("Buat akun", this::showSignup));
-
-        loginStatus = statusLabel();
-
-        form.add(title);
-        form.add(subtitle);
-        form.add(loginEmail);
-        form.add(Box.createVerticalStrut(12));
-        form.add(loginPassword);
-        form.add(Box.createVerticalStrut(16));
-        form.add(loginBtn);
-        form.add(Box.createVerticalStrut(12));
-        form.add(linkRow);
-        form.add(Box.createVerticalStrut(8));
-        form.add(loginStatus);
-
-        return form;
-    }
-
-    private JPanel buildSignupForm() {
-        JPanel form = new JPanel();
-        form.setOpaque(false);
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-
-        JLabel title = new JLabel("Buat Akun");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 8f));
-        title.setForeground(new Color(15, 23, 42));
-        title.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel subtitle = new JLabel("Mulai pantau finansial Anda ✨");
-        subtitle.setForeground(new Color(100, 116, 139));
-        subtitle.setBorder(new EmptyBorder(6, 0, 24, 0));
-        subtitle.setFont(subtitle.getFont().deriveFont(Font.PLAIN, subtitle.getFont().getSize2D() + 1f));
-        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        signupName = new RoundedTextField("Nama lengkap");
-        signupEmail = new RoundedTextField("Email aktif");
-        signupPassword = new RoundedPasswordField("Kata sandi");
-        signupConfirm = new RoundedPasswordField("Ulangi kata sandi");
-
-        PrimaryButton signupBtn = new PrimaryButton("Daftar & Masuk");
-        signupBtn.addActionListener(e -> attemptSignup());
-
-        JPanel linkRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        linkRow.setOpaque(false);
-        linkRow.add(new JLabel("Sudah punya akun? "));
-        linkRow.add(linkLabel("Masuk", this::showLogin));
-
-        signupStatus = statusLabel();
-
-        form.add(title);
-        form.add(subtitle);
-        form.add(signupName);
-        form.add(Box.createVerticalStrut(10));
-        form.add(signupEmail);
-        form.add(Box.createVerticalStrut(10));
-        form.add(signupPassword);
-        form.add(Box.createVerticalStrut(10));
-        form.add(signupConfirm);
-        form.add(Box.createVerticalStrut(16));
-        form.add(signupBtn);
-        form.add(Box.createVerticalStrut(12));
-        form.add(linkRow);
-        form.add(Box.createVerticalStrut(8));
-        form.add(signupStatus);
-
-        return form;
-    }
-
-    private void attemptLogin() {
-        loginStatus.setForeground(new Color(220, 38, 38));
-        if (loginEmail.getText().isBlank() || loginPassword.getPassword().length == 0) {
-            loginStatus.setText("Lengkapi email dan kata sandi.");
+        // Validate fields
+        if (username.isEmpty() || password.isEmpty()) {
+            showError("Username dan password harus diisi");
             return;
         }
-        loginStatus.setForeground(new Color(22, 163, 74));
-        loginStatus.setText("Login berhasil. Mengalihkan...");
-        if (onAuthenticated != null) {
-            onAuthenticated.run();
-        }
-    }
 
-    private void attemptSignup() {
-        signupStatus.setForeground(new Color(220, 38, 38));
-        if (signupName.getText().isBlank() || signupEmail.getText().isBlank() ||
-            signupPassword.getPassword().length == 0 || signupConfirm.getPassword().length == 0) {
-            signupStatus.setText("Lengkapi semua data akun.");
-            return;
-        }
-        String pwd = new String(signupPassword.getPassword());
-        String confirm = new String(signupConfirm.getPassword());
-        if (!pwd.equals(confirm)) {
-            signupStatus.setText("Kata sandi tidak sama.");
-            return;
-        }
-        signupStatus.setForeground(new Color(22, 163, 74));
-        signupStatus.setText("Akun dibuat! Silakan masuk.");
-        showLogin();
-    }
+        // Clear error
+        clearError();
 
-    private void showLogin() {
-        formLayout.show(formStack, LOGIN);
-    }
+        // Disable button during operation
+        loginButton.setEnabled(false);
+        loginButton.setText("Loading...");
 
-    private void showSignup() {
-        formLayout.show(formStack, SIGNUP);
-    }
+        // Execute in background thread
+        new Thread(() -> {
+            try {
+                SocketClient client = SocketClient.getInstance();
+                String command = client.formatCommand("REGISTER", username, password);
+                String response = client.sendCommand(command);
 
-    private JLabel linkLabel(String text, Runnable onClick) {
-        JLabel l = new JLabel("<html><u>" + text + "</u></html>");
-        l.setForeground(new Color(37, 99, 235));
-        l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        l.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (onClick != null) onClick.run();
+                // Parse response
+                if (client.isErrorResponse(response)) {
+                    String errorMsg = client.getErrorMessage(response);
+                    SwingUtilities.invokeLater(() -> {
+                        showError(errorMsg);
+                        loginButton.setEnabled(true);
+                        loginButton.setText("Daftar");
+                    });
+                    return;
+                }
+
+                // Accept REGISTER_OK as success
+                if (response != null && (response.startsWith("OK") || response.startsWith("REGISTER_OK"))) {
+                    // Registration successful, now login
+                    SwingUtilities.invokeLater(() -> {
+                        loginButton.setEnabled(true);
+                        loginButton.setText("Login");
+                        handleLogin();
+                    });
+                } else {
+                    SwingUtilities.invokeLater(() -> {
+                        showError("Registrasi gagal");
+                        loginButton.setEnabled(true);
+                        loginButton.setText("Daftar");
+                    });
+                }
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    showError("Gagal terhubung ke server: " + e.getMessage());
+                    loginButton.setEnabled(true);
+                    loginButton.setText("Daftar");
+                });
             }
-        });
-        return l;
+        }).start();
     }
 
-    private JLabel statusLabel() {
-        JLabel l = new JLabel(" ");
-        l.setForeground(new Color(71, 85, 105));
-        return l;
-    }
+    /**
+     * Logout method to be called from TopBar.
+     * Sends LOGOUT command with session token.
+     * Clears session and returns to AuthPage.
+     */
+    public void logout() {
+        SessionManager sessionManager = SessionManager.getInstance();
+        String sessionToken = sessionManager.getSessionToken();
 
-    // Rounded glass card
-    static class ColorDotIcon implements Icon {
-        private final int size;
-        private final Color color;
-
-        ColorDotIcon(int size, Color color) {
-            this.size = size;
-            this.color = color;
+        if (sessionToken != null && !sessionToken.isEmpty()) {
+            // Send LOGOUT command in background
+            new Thread(() -> {
+                try {
+                    SocketClient client = SocketClient.getInstance();
+                    String command = client.formatCommand("LOGOUT", sessionToken);
+                    client.sendCommand(command);
+                } catch (Exception e) {
+                    // Ignore errors during logout
+                    System.err.println("Logout error: " + e.getMessage());
+                }
+            }).start();
         }
+
+        // Clear session
+        sessionManager.clearSession();
+        // Stop realtime subscription
+        try {
+            SocketClient.getInstance().stopSubscription();
+        } catch (Exception ignored) {
+        }
+
+        // Reset form
+        resetFields();
+    }
+
+    /**
+     * Toggle between login and register mode.
+     * Updates form title and button text.
+     */
+    private void toggleMode() {
+        isRegisterMode = !isRegisterMode;
+
+        if (isRegisterMode) {
+            formTitle.setText("Daftar ke FinTrack");
+            loginButton.setText("Daftar");
+            toggleButton.setText("Login di sini");
+            JLabel toggleLabel = (JLabel) ((JPanel) toggleButton.getParent()).getComponent(0);
+            toggleLabel.setText("Sudah punya akun? ");
+        } else {
+            formTitle.setText("Login ke FinTrack");
+            loginButton.setText("Login");
+            toggleButton.setText("Daftar di sini");
+            JLabel toggleLabel = (JLabel) ((JPanel) toggleButton.getParent()).getComponent(0);
+            toggleLabel.setText("Belum punya akun? ");
+        }
+
+        resetFields();
+    }
+
+    /**
+     * Reset form fields to empty state.
+     */
+    public void resetFields() {
+        usernameField.setText("");
+        passwordField.setText("");
+        clearError();
+        loginButton.setEnabled(true);
+        loginButton.setText(isRegisterMode ? "Daftar" : "Login");
+    }
+
+    /**
+     * Display error message to user.
+     */
+    private void showError(String message) {
+        errorLabel.setText(message);
+    }
+
+    /**
+     * Clear error message.
+     */
+    private void clearError() {
+        errorLabel.setText(" ");
+    }
+
+    // UI Components
+
+    /**
+     * Rounded panel with background and border.
+     */
+    static class RoundPanel extends JPanel {
+        private final int arc;
+        private final Color bg;
+        private final Color border;
+
+        RoundPanel(int arc, Color bg, Color border) {
+            this.arc = arc;
+            this.bg = bg;
+            this.border = border;
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth(), h = getHeight();
+            g2.setColor(bg);
+            g2.fillRoundRect(0, 0, w - 1, h - 1, arc, arc);
+            if (border != null) {
+                g2.setColor(border);
+                g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);
+            }
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    }
+
+    /**
+     * Rounded button with primary/secondary styling.
+     */
+    static class RoundedButton extends JButton {
+        private final boolean primary;
+
+        RoundedButton(String text, boolean primary) {
+            super(text);
+            this.primary = primary;
+            setFocusPainted(false);
+            setBorderPainted(false);
+            setContentAreaFilled(false);
+            setForeground(primary ? Color.WHITE : new Color(71, 85, 105));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setFont(getFont().deriveFont(Font.PLAIN, 14f));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            if (primary) {
+                if (!isEnabled()) {
+                    g2.setColor(new Color(148, 163, 184)); // slate-400
+                } else if (getModel().isPressed()) {
+                    g2.setColor(new Color(29, 78, 216)); // blue-700
+                } else {
+                    g2.setColor(new Color(37, 99, 235)); // blue-600
+                }
+            } else {
+                if (getModel().isPressed()) {
+                    g2.setColor(new Color(241, 245, 249)); // slate-100
+                } else {
+                    g2.setColor(Color.WHITE);
+                }
+            }
+
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+
+            if (!primary) {
+                g2.setColor(new Color(226, 232, 240)); // slate-200
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+            }
+
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    }
+
+    /**
+     * Wallet icon for auth page header.
+     */
+    static class WalletIcon implements Icon {
+        private final int size = 48;
 
         @Override
         public void paintIcon(Component c, Graphics g, int x, int y) {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
-            g2.fillOval(x, y, size, size);
+
+            // Draw wallet shape
+            g2.setColor(new Color(37, 99, 235)); // blue-600
+            g2.fillRoundRect(x + 6, y + 12, size - 12, size - 24, 8, 8);
+
+            // Draw card inside
+            g2.setColor(new Color(219, 234, 254)); // blue-100
+            g2.fillRoundRect(x + 12, y + 18, size - 24, size - 36, 6, 6);
+
+            // Draw button/clasp
+            g2.setColor(new Color(37, 99, 235));
+            g2.fillOval(x + size - 16, y + size / 2 - 3, 6, 6);
+
             g2.dispose();
         }
 
@@ -371,162 +543,54 @@ public class AuthPage extends JPanel {
         }
     }
 
-    static class RoundPanel extends JPanel {
-        RoundPanel() {
-            setOpaque(false);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            // Multi-layer shadow for depth
-            g2.setColor(new Color(0, 0, 0, 8));
-            g2.fillRoundRect(6, 6, getWidth() - 6, getHeight() - 6, 20, 20);
-            g2.setColor(new Color(0, 0, 0, 15));
-            g2.fillRoundRect(3, 3, getWidth() - 3, getHeight() - 3, 20, 20);
-            // Main card background
-            g2.setColor(Color.WHITE);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 20, 20);
-            // Subtle border
-            g2.setColor(new Color(226, 232, 240, 100));
-            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 20, 20);
-            g2.dispose();
-            super.paintComponent(g);
-        }
-    }
-
-    static class RoundedTextField extends JTextField {
-        private final String placeholder;
-        private final int arc = 12;
-
-        RoundedTextField(String placeholder) {
-            this.placeholder = placeholder;
-            setOpaque(false);
-            setBorder(new EmptyBorder(12, 16, 12, 16));
-            setFont(getFont().deriveFont(Font.PLAIN, getFont().getSize2D() + 1f));
-            setForeground(new Color(15, 23, 42));
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            // Background
-            g2.setColor(new Color(248, 250, 252));
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-            // Border (different color when focused)
-            if (isFocusOwner()) {
-                g2.setColor(new Color(99, 102, 241, 180));
-                g2.setStroke(new BasicStroke(2f));
-            } else {
-                g2.setColor(new Color(226, 232, 240));
-            }
-            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
-            g2.dispose();
-            super.paintComponent(g);
-            if (getText().isEmpty() && !isFocusOwner()) {
-                Graphics2D g3 = (Graphics2D) g.create();
-                g3.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                g3.setColor(new Color(148, 163, 184));
-                g3.setFont(getFont());
-                g3.drawString(placeholder, 16, getHeight() / 2 + g3.getFontMetrics().getAscent() / 2 - 3);
-                g3.dispose();
-            }
-        }
-    }
-
-    static class RoundedPasswordField extends JPasswordField {
-        private final String placeholder;
-        private final int arc = 12;
-
-        RoundedPasswordField(String placeholder) {
-            this.placeholder = placeholder;
-            setOpaque(false);
-            setBorder(new EmptyBorder(12, 16, 12, 16));
-            setFont(getFont().deriveFont(Font.PLAIN, getFont().getSize2D() + 1f));
-            setForeground(new Color(15, 23, 42));
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            // Background
-            g2.setColor(new Color(248, 250, 252));
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-            // Border (different color when focused)
-            if (isFocusOwner()) {
-                g2.setColor(new Color(99, 102, 241, 180));
-                g2.setStroke(new BasicStroke(2f));
-            } else {
-                g2.setColor(new Color(226, 232, 240));
-            }
-            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
-            g2.dispose();
-            super.paintComponent(g);
-            if (getPassword().length == 0 && !isFocusOwner()) {
-                Graphics2D g3 = (Graphics2D) g.create();
-                g3.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                g3.setColor(new Color(148, 163, 184));
-                g3.setFont(getFont());
-                g3.drawString(placeholder, 16, getHeight() / 2 + g3.getFontMetrics().getAscent() / 2 - 3);
-                g3.dispose();
-            }
-        }
-    }
-
-    static class PrimaryButton extends JButton {
-        private final Color start = new Color(79, 70, 229);
-        private final Color end = new Color(99, 102, 241);
-        private final int arc = 12;
-        private boolean hovered = false;
-
-        PrimaryButton(String text) {
-            super(text);
-            setForeground(Color.WHITE);
-            setFocusPainted(false);
-            setContentAreaFilled(false);
-            setBorderPainted(false);
-            setOpaque(false);
-            setBorder(new EmptyBorder(14, 20, 14, 20));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setFont(getFont().deriveFont(Font.BOLD, getFont().getSize2D() + 1f));
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override
-                public void mouseEntered(java.awt.event.MouseEvent e) {
-                    hovered = true;
-                    repaint();
+    /**
+     * Load all data from backend (accounts, categories, transactions) after login.
+     * 
+     * @param onComplete callback to run after all data is loaded
+     */
+    private void loadAllDataFromBackend(Runnable onComplete) {
+        new Thread(() -> {
+            try {
+                // Load accounts
+                utils.AccountStore.loadFromBackend(
+                        () -> {
+                            // Load categories
+                            utils.CategoryStore.loadFromBackend(
+                                    () -> {
+                                        // Load transactions
+                                        utils.TransactionStore.loadFromBackend(
+                                                () -> {
+                                                    // All data loaded successfully
+                                                    if (onComplete != null) {
+                                                        onComplete.run();
+                                                    }
+                                                },
+                                                error -> {
+                                                    System.err.println("Failed to load transactions: " + error);
+                                                    if (onComplete != null) {
+                                                        onComplete.run();
+                                                    }
+                                                });
+                                    },
+                                    error -> {
+                                        System.err.println("Failed to load categories: " + error);
+                                        if (onComplete != null) {
+                                            onComplete.run();
+                                        }
+                                    });
+                        },
+                        error -> {
+                            System.err.println("Failed to load accounts: " + error);
+                            if (onComplete != null) {
+                                onComplete.run();
+                            }
+                        });
+            } catch (Exception e) {
+                System.err.println("Error loading data: " + e.getMessage());
+                if (onComplete != null) {
+                    onComplete.run();
                 }
-                @Override
-                public void mouseExited(java.awt.event.MouseEvent e) {
-                    hovered = false;
-                    repaint();
-                }
-            });
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            // Shadow
-            if (hovered) {
-                g2.setColor(new Color(79, 70, 229, 40));
-                g2.fillRoundRect(2, 4, getWidth() - 2, getHeight() - 2, arc, arc);
             }
-            // Gradient background
-            Color s = hovered ? new Color(67, 56, 202) : start;
-            Color e = hovered ? new Color(79, 70, 229) : end;
-            GradientPaint gp = new GradientPaint(0, 0, s, getWidth(), getHeight(), e);
-            g2.setPaint(gp);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-            g2.dispose();
-            super.paintComponent(g);
-        }
+        }).start();
     }
 }

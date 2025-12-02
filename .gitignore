@@ -3,3 +3,5 @@
 
 # Ignore exported design folder
 fintrack\ desktop\ ui\ design/
+
+out/
