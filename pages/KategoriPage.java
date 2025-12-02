@@ -1,11 +1,13 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import utils.ScrollUtil;
 import utils.CategoryStore;
+import utils.TransactionStore;
 
 public class KategoriPage extends JPanel {
     private boolean editMode = false;
@@ -13,25 +15,10 @@ public class KategoriPage extends JPanel {
     private int editingIndex = -1;
     private boolean editingIncome = false;
 
-    private final List<Category> incomeCategories = new ArrayList<>(Arrays.asList(
-        new Category("Gaji", "GI", 12, 102_000_000, new Color(5,150,105)),
-        new Category("Freelance", "FR", 8, 18_500_000, new Color(14,165,233)),
-        new Category("Investasi", "IV", 5, 6_200_000, new Color(139,92,246)),
-        new Category("Bisnis", "BS", 24, 45_800_000, new Color(245,158,11)),
-        new Category("Lainnya", "LN", 6, 3_500_000, new Color(100,116,139))
-    ));
-
-    private final List<Category> expenseCategories = new ArrayList<>(Arrays.asList(
-        new Category("Makanan & Minuman", "MM", 87, 27_500_000, new Color(37,99,235)),
-        new Category("Transportasi", "TR", 52, 16_500_000, new Color(5,150,105)),
-        new Category("Belanja", "BL", 34, 19_800_000, new Color(220,38,38)),
-        new Category("Tagihan", "TG", 18, 22_000_000, new Color(245,158,11)),
-        new Category("Kesehatan", "KS", 12, 8_500_000, new Color(236,72,153)),
-        new Category("Pendidikan", "PD", 6, 5_200_000, new Color(139,92,246)),
-        new Category("Entertainment", "EN", 28, 4_800_000, new Color(6,182,212)),
-        new Category("Cicilan", "CC", 11, 38_500_000, new Color(239,68,68)),
-        new Category("Lainnya", "LA", 23, 10_450_000, new Color(100,116,139))
-    ));
+    private final List<Category> incomeCategories = new ArrayList<>();
+    private final List<Category> expenseCategories = new ArrayList<>();
+    
+    private TransactionStore.Snapshot transactionSnapshot = TransactionStore.snapshot();
 
     private final JPanel categoriesList = new JPanel();
     private final CardLayout rightCards = new CardLayout();
@@ -43,9 +30,14 @@ public class KategoriPage extends JPanel {
     private JComboBox<String> formTypeCombo;
     private JTextField formNameField;
     private JTextField formIconField;
+    private JPanel summaryCards;
 
     public KategoriPage() {
         setLayout(new BorderLayout());
+
+        // Listen to category and transaction changes
+        CategoryStore.addListener(this::onCategoryUpdate);
+        TransactionStore.addListener(this::onTransactionUpdate);
 
         // Header
         JPanel header = new JPanel(new BorderLayout());
@@ -72,6 +64,9 @@ public class KategoriPage extends JPanel {
             editMode = false;
             formTitle.setText("Tambah Kategori");
             saveButton.setText("Simpan");
+            formTypeCombo.setSelectedIndex(0);
+            formNameField.setText("");
+            formIconField.setText("");
             rightCards.show(rightPanelCards, "form");
         });
         header.add(addBtn, BorderLayout.EAST);
@@ -92,13 +87,9 @@ public class KategoriPage extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         // Summary Cards
-        JPanel summaryCards = new JPanel(new GridLayout(1, 4, 12, 12));
+        summaryCards = new JPanel(new GridLayout(1, 4, 12, 12));
         summaryCards.setOpaque(false);
         summaryCards.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
-        summaryCards.add(buildSummaryCard("Kategori Pemasukan", incomeCategories.size() + " kategori", color(5, 150, 105), "↑"));
-        summaryCards.add(buildSummaryCard("Kategori Pengeluaran", expenseCategories.size() + " kategori", color(220, 38, 38), "↓"));
-        summaryCards.add(buildSummaryCard("Total Kategori", (incomeCategories.size() + expenseCategories.size()) + " kategori", color(37, 99, 235), "#"));
-        summaryCards.add(buildSummaryCard("Paling Aktif", "Makanan & Minuman", color(245, 158, 11), "★"));
         root.add(summaryCards);
         root.add(Box.createVerticalStrut(16));
 
@@ -159,8 +150,139 @@ public class KategoriPage extends JPanel {
         root.add(dualPanel);
         root.add(Box.createVerticalGlue());
 
-        // Initial list render
+        // Initial data load
+        loadCategoriesFromStore();
+        updateSummaryCards();
         renderCategoryList();
+    }
+
+    private void onCategoryUpdate(CategoryStore.Snapshot snapshot) {
+        SwingUtilities.invokeLater(() -> {
+            loadCategoriesFromStore();
+            updateSummaryCards();
+            renderCategoryList();
+        });
+    }
+
+    private void onTransactionUpdate(TransactionStore.Snapshot snapshot) {
+        SwingUtilities.invokeLater(() -> {
+            transactionSnapshot = snapshot;
+            loadCategoriesFromStore();
+            updateSummaryCards();
+            renderCategoryList();
+        });
+    }
+
+    private void loadCategoriesFromStore() {
+        CategoryStore.Snapshot catSnapshot = CategoryStore.snapshot();
+        
+        // Build categories with real transaction data
+        incomeCategories.clear();
+        expenseCategories.clear();
+        
+        // Process income categories
+        for (String catName : catSnapshot.incomes()) {
+            CategoryStats stats = calculateCategoryStats(catName, true);
+            Color color = getColorForCategory(catName, true, incomeCategories.size());
+            String icon = getIconForCategory(catName);
+            incomeCategories.add(new Category(catName, icon, stats.count, stats.total, color));
+        }
+        
+        // Process expense categories
+        for (String catName : catSnapshot.expenses()) {
+            CategoryStats stats = calculateCategoryStats(catName, false);
+            Color color = getColorForCategory(catName, false, expenseCategories.size());
+            String icon = getIconForCategory(catName);
+            expenseCategories.add(new Category(catName, icon, stats.count, stats.total, color));
+        }
+    }
+
+    private CategoryStats calculateCategoryStats(String categoryName, boolean isIncome) {
+        int count = 0;
+        long total = 0;
+        
+        for (TransactionStore.Transaction tx : transactionSnapshot.transactions()) {
+            boolean matchType = isIncome ? tx.isIncome() : !tx.isIncome();
+            if (matchType && categoryName.equalsIgnoreCase(tx.category())) {
+                count++;
+                total += tx.amount();
+            }
+        }
+        
+        return new CategoryStats(count, total);
+    }
+
+    private String getIconForCategory(String name) {
+        if (name.length() >= 2) {
+            return name.substring(0, 2).toUpperCase();
+        }
+        return name.toUpperCase();
+    }
+
+    private Color getColorForCategory(String name, boolean isIncome, int index) {
+        Color[] incomeColors = {
+            new Color(5,150,105),
+            new Color(14,165,233),
+            new Color(139,92,246),
+            new Color(245,158,11),
+            new Color(100,116,139)
+        };
+        
+        Color[] expenseColors = {
+            new Color(37,99,235),
+            new Color(5,150,105),
+            new Color(220,38,38),
+            new Color(245,158,11),
+            new Color(236,72,153),
+            new Color(139,92,246),
+            new Color(6,182,212),
+            new Color(239,68,68),
+            new Color(100,116,139)
+        };
+        
+        Color[] palette = isIncome ? incomeColors : expenseColors;
+        return palette[index % palette.length];
+    }
+
+    private void updateSummaryCards() {
+        summaryCards.removeAll();
+        
+        int incomeCount = incomeCategories.size();
+        int expenseCount = expenseCategories.size();
+        int totalCount = incomeCount + expenseCount;
+        
+        // Find most active category
+        String mostActive = "Belum ada";
+        int maxTx = 0;
+        for (Category cat : expenseCategories) {
+            if (cat.transactions > maxTx) {
+                maxTx = cat.transactions;
+                mostActive = cat.name;
+            }
+        }
+        for (Category cat : incomeCategories) {
+            if (cat.transactions > maxTx) {
+                maxTx = cat.transactions;
+                mostActive = cat.name;
+            }
+        }
+        
+        summaryCards.add(buildSummaryCard("Kategori Pemasukan", incomeCount + " kategori", color(5, 150, 105), "↑"));
+        summaryCards.add(buildSummaryCard("Kategori Pengeluaran", expenseCount + " kategori", color(220, 38, 38), "↓"));
+        summaryCards.add(buildSummaryCard("Total Kategori", totalCount + " kategori", color(37, 99, 235), "#"));
+        summaryCards.add(buildSummaryCard("Paling Aktif", mostActive, color(245, 158, 11), "★"));
+        
+        summaryCards.revalidate();
+        summaryCards.repaint();
+    }
+
+    private static class CategoryStats {
+        final int count;
+        final long total;
+        CategoryStats(int count, long total) {
+            this.count = count;
+            this.total = total;
+        }
     }
 
     private void switchType(String type) {
@@ -327,13 +449,86 @@ public class KategoriPage extends JPanel {
         statsTitle.setBorder(new EmptyBorder(0, 0, 16, 0));
         statsContent.add(statsTitle);
 
-        statsContent.add(buildStatsBox("Kategori Paling Aktif", "Makanan & Minuman", "87 transaksi bulan ini", new Color(239, 246, 255), new Color(191, 219, 254)));
-        statsContent.add(Box.createVerticalStrut(12));
-        statsContent.add(buildStatsBox("Pengeluaran Terbesar", "Cicilan", "Rp 38.500.000", new Color(254, 242, 242), new Color(254, 202, 202)));
-        statsContent.add(Box.createVerticalStrut(12));
-        statsContent.add(buildStatsBox("Pemasukan Terbesar", "Gaji", "Rp 102.000.000", new Color(236, 253, 245), new Color(167, 243, 208)));
-        statsContent.add(Box.createVerticalStrut(12));
-        statsContent.add(buildStatsBox("Tips", "Gunakan emoji/warna unik", "Supaya kategori mudah dikenali", new Color(248, 250, 252), new Color(226, 232, 240)));
+        // Calculate real statistics
+        Category mostActive = null;
+        Category largestExpense = null;
+        Category largestIncome = null;
+        
+        int maxTx = 0;
+        for (Category cat : expenseCategories) {
+            if (cat.transactions > maxTx) {
+                maxTx = cat.transactions;
+                mostActive = cat;
+            }
+        }
+        for (Category cat : incomeCategories) {
+            if (cat.transactions > maxTx) {
+                maxTx = cat.transactions;
+                mostActive = cat;
+            }
+        }
+        
+        long maxExpense = 0;
+        for (Category cat : expenseCategories) {
+            if (cat.total > maxExpense) {
+                maxExpense = cat.total;
+                largestExpense = cat;
+            }
+        }
+        
+        long maxIncome = 0;
+        for (Category cat : incomeCategories) {
+            if (cat.total > maxIncome) {
+                maxIncome = cat.total;
+                largestIncome = cat;
+            }
+        }
+        
+        // Most active category
+        if (mostActive != null) {
+            statsContent.add(buildStatsBox(
+                "Kategori Paling Aktif", 
+                mostActive.name, 
+                mostActive.transactions + " transaksi", 
+                new Color(239, 246, 255), 
+                new Color(191, 219, 254)
+            ));
+            statsContent.add(Box.createVerticalStrut(12));
+        }
+        
+        // Largest expense
+        if (largestExpense != null) {
+            statsContent.add(buildStatsBox(
+                "Pengeluaran Terbesar", 
+                largestExpense.name, 
+                "Rp " + String.format("%,d", largestExpense.total).replace(',', '.'), 
+                new Color(254, 242, 242), 
+                new Color(254, 202, 202)
+            ));
+            statsContent.add(Box.createVerticalStrut(12));
+        }
+        
+        // Largest income
+        if (largestIncome != null) {
+            statsContent.add(buildStatsBox(
+                "Pemasukan Terbesar", 
+                largestIncome.name, 
+                "Rp " + String.format("%,d", largestIncome.total).replace(',', '.'), 
+                new Color(236, 253, 245), 
+                new Color(167, 243, 208)
+            ));
+            statsContent.add(Box.createVerticalStrut(12));
+        }
+        
+        // Tips
+        statsContent.add(buildStatsBox(
+            "Tips", 
+            "Gunakan emoji/warna unik", 
+            "Supaya kategori mudah dikenali", 
+            new Color(248, 250, 252), 
+            new Color(226, 232, 240)
+        ));
+        
         return statsContent;
     }
 
@@ -362,10 +557,10 @@ public class KategoriPage extends JPanel {
         formTypeCombo = new JComboBox<>(new String[]{"Pengeluaran", "Pemasukan"});
         fields.add(createFormField("Tipe Kategori", formTypeCombo));
         fields.add(Box.createVerticalStrut(12));
-        formNameField = new JTextField("Makanan & Minuman");
+        formNameField = new JTextField();
         fields.add(createFormField("Nama Kategori", formNameField));
         fields.add(Box.createVerticalStrut(12));
-        formIconField = new JTextField("MM");
+        formIconField = new JTextField();
         fields.add(createFormField("Icon (2 huruf/emoji)", formIconField));
         fields.add(Box.createVerticalStrut(12));
         fields.add(colorPalette());
@@ -503,9 +698,9 @@ public class KategoriPage extends JPanel {
         final String name;
         final String icon;
         final int transactions;
-        final int total;
+        final long total;
         final Color color;
-        Category(String name, String icon, int transactions, int total, Color color) {
+        Category(String name, String icon, int transactions, long total, Color color) {
             this.name = name;
             this.icon = icon;
             this.transactions = transactions;

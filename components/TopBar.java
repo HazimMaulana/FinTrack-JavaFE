@@ -1,11 +1,19 @@
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 public class TopBar extends JPanel {
     private final Font topFont;
+    private final Runnable onLogout;
 
     public TopBar() {
+        this(null);
+    }
+
+    public TopBar(Runnable onLogout) {
+        this.onLogout = onLogout;
         setLayout(new BorderLayout());
         setBackground(new Color(245, 245, 245));
         setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(220, 220, 220)));
@@ -18,11 +26,11 @@ public class TopBar extends JPanel {
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         leftButtons.setOpaque(false);
 
-        JButton btnFile = makeTopButton("File", () -> createMenuContent(new String[]{"New", "Open", "Save", "-", "Exit"}));
-        JButton btnView = makeTopButton("View", () -> createMenuContent(new String[]{"Toggle Sidebar", "Refresh"}));
-        JButton btnEdit = makeTopButton("Edit", () -> createMenuContent(new String[]{"Undo", "Redo", "-", "Preferences"}));
-        JButton btnTools = makeTopButton("Tools", () -> createMenuContent(new String[]{"Import", "Export"}));
-        JButton btnHelp = makeTopButton("Help", () -> createMenuContent(new String[]{"Documentation", "About"}));
+        JButton btnFile = makeTopButton("File", () -> createMenuContent(simpleMenu("New", "Open", "Save", "-", "Exit")));
+        JButton btnView = makeTopButton("View", () -> createMenuContent(simpleMenu("Toggle Sidebar", "Refresh")));
+        JButton btnEdit = makeTopButton("Edit", () -> createMenuContent(simpleMenu("Undo", "Redo", "-", "Preferences")));
+        JButton btnTools = makeTopButton("Tools", () -> createMenuContent(simpleMenu("Import", "Export")));
+        JButton btnHelp = makeTopButton("Help", () -> createMenuContent(simpleMenu("Documentation", "About")));
 
         leftButtons.add(btnFile);
         leftButtons.add(btnView);
@@ -51,7 +59,7 @@ public class TopBar extends JPanel {
         profileBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         installHoverEffect(profileBtn);
         profileBtn.addActionListener(e -> showPopupBelow(profileBtn,
-            () -> createMenuContent(new String[]{"View Profile", "Settings", "-", "Logout"})));
+            () -> createMenuContent(profileMenuItems())));
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         right.setOpaque(false);
@@ -104,13 +112,37 @@ public class TopBar extends JPanel {
         card.showBelow(invoker, gap);
     }
 
-    private JComponent createMenuContent(String[] items) {
+    private List<MenuItem> simpleMenu(String... items) {
+        List<MenuItem> list = new ArrayList<>();
+        for (String it : items) {
+            if ("-".equals(it)) {
+                list.add(MenuItem.divider());
+            } else {
+                String copy = it;
+                list.add(MenuItem.action(copy, () -> System.out.println("Clicked: " + copy)));
+            }
+        }
+        return list;
+    }
+
+    private List<MenuItem> profileMenuItems() {
+        List<MenuItem> items = new ArrayList<>();
+        items.add(MenuItem.action("View Profile", () -> System.out.println("Clicked: View Profile")));
+        items.add(MenuItem.action("Settings", () -> System.out.println("Clicked: Settings")));
+        items.add(MenuItem.divider());
+        items.add(MenuItem.action("Logout", () -> {
+            if (onLogout != null) onLogout.run();
+        }));
+        return items;
+    }
+
+    private JComponent createMenuContent(List<MenuItem> items) {
         JPanel panel = new JPanel();
         panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         java.util.List<JButton> added = new java.util.ArrayList<>();
-        for (String it : items) {
-            if ("-".equals(it)) {
+        for (MenuItem it : items) {
+            if (it.divider) {
                 JSeparator sep = new JSeparator();
                 sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
                 panel.add(Box.createVerticalStrut(4));
@@ -118,7 +150,7 @@ public class TopBar extends JPanel {
                 panel.add(Box.createVerticalStrut(4));
                 continue;
             }
-            JButton itemBtn = new JButton(it);
+            JButton itemBtn = new JButton(it.label);
             itemBtn.setHorizontalAlignment(SwingConstants.LEFT);
             itemBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
             itemBtn.setFocusPainted(false);
@@ -148,7 +180,11 @@ public class TopBar extends JPanel {
                 // Close the popup by finding the ancestor JPopupMenu
                 JPopupMenu pop = (JPopupMenu) SwingUtilities.getAncestorOfClass(JPopupMenu.class, itemBtn);
                 if (pop != null) pop.setVisible(false);
-                System.out.println("Clicked: " + it);
+                if (it.action != null) {
+                    it.action.run();
+                } else {
+                    System.out.println("Clicked: " + it.label);
+                }
             });
             panel.add(itemBtn);
             added.add(itemBtn);
@@ -167,5 +203,25 @@ public class TopBar extends JPanel {
             b.setMinimumSize(new Dimension(120, rowH));
         }
         return panel;
+    }
+
+    private static class MenuItem {
+        final String label;
+        final Runnable action;
+        final boolean divider;
+
+        private MenuItem(String label, Runnable action, boolean divider) {
+            this.label = label;
+            this.action = action;
+            this.divider = divider;
+        }
+
+        static MenuItem action(String label, Runnable action) {
+            return new MenuItem(label, action, false);
+        }
+
+        static MenuItem divider() {
+            return new MenuItem("-", null, true);
+        }
     }
 }

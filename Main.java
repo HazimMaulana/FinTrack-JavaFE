@@ -9,6 +9,8 @@ public class Main {
     private static final String AKUN = "akun";
     private static final String KATEGORI = "kategori";
     private static final String PENGATURAN = "pengaturan";
+    private static final String AUTH = "auth";
+    private static final String APP = "app";
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(Main::createAndShowUI);
@@ -23,11 +25,28 @@ public class Main {
         frame.setSize(1280, 700);
         frame.setLocationRelativeTo(null);
 
+        CardLayout shellLayout = new CardLayout();
+        JPanel shell = new JPanel(shellLayout);
+        frame.setContentPane(shell);
+
+        AuthPage authPage = new AuthPage(() -> shellLayout.show(shell, APP));
+        JPanel appShell = createAppShell(() -> {
+            authPage.resetFields();
+            shellLayout.show(shell, AUTH);
+        });
+
+        shell.add(authPage, AUTH);
+        shell.add(appShell, APP);
+
+        frame.setVisible(true);
+        shellLayout.show(shell, AUTH);
+    }
+
+    private static JPanel createAppShell(Runnable onLogout) {
         JPanel root = new JPanel(new BorderLayout());
-        frame.setContentPane(root);
 
         // Header stack: TopBar + InfoBar + ActionBar (stacked vertically)
-        TopBar topBar = new TopBar();
+        TopBar topBar = new TopBar(onLogout);
         InfoBar infoBar = new InfoBar();
         infoBar.setTotals(0, 0, 0); // placeholder values; update as needed
         // Content area with CardLayout to switch pages
@@ -60,9 +79,9 @@ public class Main {
         root.add(sidebar, BorderLayout.WEST);
         root.add(content, BorderLayout.CENTER);
 
-        frame.setVisible(true);
         // Ensure default is Dashboard
         switchTo(content, DASHBOARD);
+        return root;
     }
 
     private static void switchTo(JPanel content, String route) {
