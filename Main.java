@@ -30,7 +30,22 @@ public class Main {
         TopBar topBar = new TopBar();
         InfoBar infoBar = new InfoBar();
         infoBar.setTotals(0, 0, 0); // placeholder values; update as needed
-        ActionBar actionBar = new ActionBar();
+        // Content area with CardLayout to switch pages
+        JPanel content = new JPanel(new CardLayout());
+        HomePage homePage = new HomePage();
+        TransaksiPage transaksiPage = new TransaksiPage();
+        LaporanPage laporanPage = new LaporanPage();
+        content.add(homePage, DASHBOARD);
+        content.add(transaksiPage, TRANSAKSI);
+        content.add(laporanPage, LAPORAN);
+        content.add(new AkunWalletPage(), AKUN);
+        content.add(new KategoriPage(), KATEGORI);
+        content.add(new SettingsPage(), PENGATURAN);
+
+        ActionBar actionBar = new ActionBar(() -> {
+            switchTo(content, TRANSAKSI);
+            transaksiPage.startNewTransaction();
+        });
 
         JPanel header = new JPanel();
         header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
@@ -38,15 +53,6 @@ public class Main {
         header.add(infoBar);
         header.add(actionBar);
         root.add(header, BorderLayout.NORTH);
-
-        // Content area with CardLayout to switch pages
-        JPanel content = new JPanel(new CardLayout());
-        content.add(new HomePage(), DASHBOARD);
-        content.add(new TransaksiPage(), TRANSAKSI);
-        content.add(new LaporanPage(), LAPORAN);
-        content.add(new AkunWalletPage(), AKUN);
-        content.add(new KategoriPage(), KATEGORI);
-        content.add(new SettingsPage(), PENGATURAN);
 
         // Sidebar with navigation callback to switch cards
         Sidebar sidebar = new Sidebar(route -> switchTo(content, route));

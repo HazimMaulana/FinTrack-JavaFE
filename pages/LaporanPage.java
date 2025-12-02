@@ -5,6 +5,7 @@ import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.util.List;
 import utils.ScrollUtil;
+import utils.ComboUtil;
 
 public class LaporanPage extends JPanel {
     private String activeTab = "grafik";
@@ -82,10 +83,16 @@ public class LaporanPage extends JPanel {
         RoundPanel filterCard = new RoundPanel(10, Color.WHITE, color(226, 232, 240));
         filterCard.setLayout(new GridLayout(1, 5, 12, 0));
         filterCard.setBorder(new EmptyBorder(16, 16, 16, 16));
-        filterCard.add(createFormField("Dari Tanggal", new JTextField("2025-01-01")));
-        filterCard.add(createFormField("Sampai Tanggal", new JTextField("2025-11-18")));
-        filterCard.add(createFormField("Akun", new JComboBox<>(new String[]{"Semua Akun", "BCA", "Mandiri", "Cash"})));
-        filterCard.add(createFormField("Kategori", new JComboBox<>(new String[]{"Semua Kategori", "Pemasukan", "Makanan", "Transportasi", "Belanja", "Tagihan"})));
+        JTextField dateFrom = new JTextField("2025-01-01");
+        JTextField dateTo = new JTextField("2025-11-18");
+        JComboBox<String> akunFilter = new JComboBox<>(new String[]{"Semua Akun", "BCA", "Mandiri", "Cash"});
+        JComboBox<String> kategoriFilter = new JComboBox<>(new String[]{"Semua Kategori", "Pemasukan", "Makanan", "Transportasi", "Belanja", "Tagihan"});
+        ComboUtil.apply(akunFilter);
+        ComboUtil.apply(kategoriFilter);
+        filterCard.add(createFormField("Dari Tanggal", dateFrom));
+        filterCard.add(createFormField("Sampai Tanggal", dateTo));
+        filterCard.add(createFormField("Akun", akunFilter));
+        filterCard.add(createFormField("Kategori", kategoriFilter));
         JPanel btnPanel = new JPanel(new BorderLayout());
         btnPanel.setOpaque(false);
         JButton showBtn = new RoundedButton("Tampilkan", true);

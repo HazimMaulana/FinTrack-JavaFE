@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import utils.ScrollUtil;
+import utils.ComboUtil;
 
 public class TransaksiPage extends JPanel {
     private boolean editMode = false;
@@ -67,6 +68,8 @@ public class TransaksiPage extends JPanel {
         dateFilter.setPreferredSize(new Dimension(140, 28));
         JComboBox<String> categoryFilter = new JComboBox<>(new String[]{"Semua Kategori", "Pemasukan", "Belanja", "Tagihan", "Makanan", "Transportasi"});
         JComboBox<String> accountFilter = new JComboBox<>(new String[]{"Semua Akun", "BCA", "Mandiri", "Cash"});
+        ComboUtil.apply(categoryFilter);
+        ComboUtil.apply(accountFilter);
         toolbar.add(filterBtn);
         toolbar.add(dateFilter);
         toolbar.add(categoryFilter);
@@ -194,11 +197,17 @@ public class TransaksiPage extends JPanel {
         formFields.setOpaque(false);
         formFields.add(createFormField("Tanggal", new JTextField("2025-11-18")));
         formFields.add(Box.createVerticalStrut(12));
-        formFields.add(createFormField("Tipe Transaksi", new JComboBox<>(new String[]{"Pengeluaran (Kredit)", "Pemasukan (Debit)"})));
+        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Pengeluaran (Kredit)", "Pemasukan (Debit)"});
+        ComboUtil.apply(typeCombo);
+        formFields.add(createFormField("Tipe Transaksi", typeCombo));
         formFields.add(Box.createVerticalStrut(12));
-        formFields.add(createFormField("Akun", new JComboBox<>(new String[]{"BCA - Rp 45.250.000", "Mandiri - Rp 12.500.000", "Cash - Rp 2.150.000"})));
+        JComboBox<String> accountCombo = new JComboBox<>(new String[]{"BCA - Rp 45.250.000", "Mandiri - Rp 12.500.000", "Cash - Rp 2.150.000"});
+        ComboUtil.apply(accountCombo);
+        formFields.add(createFormField("Akun", accountCombo));
         formFields.add(Box.createVerticalStrut(12));
-        formFields.add(createFormField("Kategori", new JComboBox<>(new String[]{"Pemasukan", "Makanan & Minuman", "Transportasi", "Belanja", "Tagihan", "Lainnya"})));
+        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{"Pemasukan", "Makanan & Minuman", "Transportasi", "Belanja", "Tagihan", "Lainnya"});
+        ComboUtil.apply(categoryCombo);
+        formFields.add(createFormField("Kategori", categoryCombo));
         formFields.add(Box.createVerticalStrut(12));
         formFields.add(createFormField("Nominal", new JTextField()));
         formFields.add(Box.createVerticalStrut(12));
@@ -260,6 +269,14 @@ public class TransaksiPage extends JPanel {
         panel.add(Box.createVerticalStrut(4));
         panel.add(field);
         return panel;
+    }
+
+    public void startNewTransaction() {
+        editMode = false;
+        formTitle.setText("Tambah Transaksi Baru");
+        if (saveBtn != null) {
+            saveBtn.setText("Simpan");
+        }
     }
 
     private static Color color(int r, int g, int b) { return new Color(r, g, b); }

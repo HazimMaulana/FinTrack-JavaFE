@@ -3,8 +3,10 @@ import java.awt.*;
 
 public class ActionBar extends JPanel {
     private int barHeight = 50;
+    private final Runnable onNewTransaction;
 
-    public ActionBar() {
+    public ActionBar(Runnable onNewTransaction) {
+        this.onNewTransaction = onNewTransaction;
         setLayout(new BorderLayout());
         setBackground(Color.WHITE);
         setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(230, 230, 230)));
@@ -15,6 +17,9 @@ public class ActionBar extends JPanel {
 
         JButton newTxn = new RoundedButton("+ Transaksi Baru", new Color(33,150,243), new Color(25,118,210));
         newTxn.setForeground(Color.WHITE);
+        newTxn.addActionListener(e -> {
+            if (onNewTransaction != null) onNewTransaction.run();
+        });
 
         JSeparator vSep = new JSeparator(SwingConstants.VERTICAL);
         vSep.setMaximumSize(new Dimension(1, 22));
