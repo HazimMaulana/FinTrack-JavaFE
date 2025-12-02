@@ -1,0 +1,5 @@
+# Ignore compiled Java bytecode
+*.class
+
+# Ignore exported design folder
+fintrack\ desktop\ ui\ design/
