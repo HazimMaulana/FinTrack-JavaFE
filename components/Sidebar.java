@@ -82,7 +82,6 @@ public class Sidebar extends JPanel {
         menu.put("laporan", "Laporan");
         menu.put("akun", "Akun & Wallet");
         menu.put("kategori", "Kategori");
-        menu.put("pengaturan", "Pengaturan");
         return menu;
     }
 

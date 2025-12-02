@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Path2D;
 import java.util.List;
+import utils.ScrollUtil;
 
 public class HomePage extends JPanel {
     public HomePage() {
@@ -16,7 +17,6 @@ public class HomePage extends JPanel {
         root.setOpaque(false);
         // Keep overall page padding but remove left/top so header can sit flush left
         root.setBorder(new EmptyBorder(0, 16, 16, 16));
-        add(root, BorderLayout.CENTER);
 
         // Header
         JPanel header = new JPanel();
@@ -36,7 +36,20 @@ public class HomePage extends JPanel {
         header.add(subtitle);
         // Place header in page NORTH with a small left gap from the sidebar
         header.setBorder(new EmptyBorder(16, 12, 16, 16));
-        add(header, BorderLayout.NORTH);
+
+        JPanel page = new JPanel();
+        page.setLayout(new BoxLayout(page, BoxLayout.Y_AXIS));
+        page.setOpaque(false);
+        page.add(header);
+        page.add(root);
+
+        JScrollPane pageScroll = new JScrollPane(page);
+        pageScroll.setBorder(null);
+        pageScroll.setOpaque(false);
+        pageScroll.getViewport().setOpaque(false);
+        pageScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        ScrollUtil.apply(pageScroll);
+        add(pageScroll, BorderLayout.CENTER);
 
         // Summary cards grid (4 cols)
         JPanel cards = new JPanel(new GridLayout(1, 4, 12, 12));
@@ -58,7 +71,12 @@ public class HomePage extends JPanel {
         RoundPanel lineCard = new RoundPanel(10, Color.WHITE, color(226,232,240));
         lineCard.setLayout(new BorderLayout());
         lineCard.setBorder(new EmptyBorder(16,16,16,16));
-        // Intentionally empty card (no title or chart yet)
+        JLabel lineTitle = label("Trend 6 Bulan Terakhir", color(30,41,59), 0, 0, 0, 0);
+        lineTitle.setFont(lineTitle.getFont().deriveFont(Font.PLAIN, 14f));
+        lineCard.add(lineTitle, BorderLayout.NORTH);
+        TrendChartPanel trendChart = new TrendChartPanel();
+        trendChart.setPreferredSize(new Dimension(0, 300));
+        lineCard.add(trendChart, BorderLayout.CENTER);
         chartsRow.add(lineCard, gc);
 
         gc.insets = new Insets(0, 0, 0, 0);
@@ -66,32 +84,26 @@ public class HomePage extends JPanel {
         RoundPanel pieCard = new RoundPanel(10, Color.WHITE, color(226,232,240));
         pieCard.setLayout(new BorderLayout());
         pieCard.setBorder(new EmptyBorder(16,16,16,16));
-        // Intentionally empty card
+        JLabel pieTitle = label("Kategori Pengeluaran", color(30,41,59), 0, 0, 0, 0);
+        pieTitle.setFont(pieTitle.getFont().deriveFont(Font.PLAIN, 14f));
+        pieCard.add(pieTitle, BorderLayout.NORTH);
+        CategoryPieChartPanel pieChart = new CategoryPieChartPanel();
+        pieChart.setPreferredSize(new Dimension(0, 300));
+        pieCard.add(pieChart, BorderLayout.CENTER);
         chartsRow.add(pieCard, gc);
         chartsRow.setPreferredSize(new Dimension(0, 360));
         root.add(chartsRow);
 
-        // Bottom row (transactions + bills) 2:1
-        JPanel bottomRow = new JPanel(new GridBagLayout());
-        bottomRow.setOpaque(false);
-        GridBagConstraints gbc2 = new GridBagConstraints();
-        gbc2.insets = new Insets(0, 0, 0, 12);
-        gbc2.gridx = 0; gbc2.gridy = 0; gbc2.weightx = 2; gbc2.fill = GridBagConstraints.BOTH; gbc2.weighty = 1;
+        // Transactions table (single wide card)
         RoundPanel txCard = new RoundPanel(10, Color.WHITE, color(226,232,240));
         txCard.setLayout(new BorderLayout());
         txCard.setBorder(new EmptyBorder(16,16,16,16));
-        // Intentionally empty card
-        bottomRow.add(txCard, gbc2);
-
-        gbc2.insets = new Insets(0, 0, 0, 0);
-        gbc2.gridx = 1; gbc2.weightx = 1;
-        RoundPanel billsCard = new RoundPanel(10, Color.WHITE, color(226,232,240));
-        billsCard.setLayout(new BorderLayout());
-        billsCard.setBorder(new EmptyBorder(16,16,16,16));
-        // Intentionally empty card
-        bottomRow.add(billsCard, gbc2);
-        bottomRow.setPreferredSize(new Dimension(0, 340));
-        root.add(bottomRow);
+        JLabel txTitle = label("10 Transaksi Terakhir", color(30,41,59), 0, 0, 12, 12);
+        txTitle.setFont(txTitle.getFont().deriveFont(Font.PLAIN, 14f));
+        txCard.add(txTitle, BorderLayout.NORTH);
+        JComponent tablePane = buildTransactionsTable();
+        txCard.add(tablePane, BorderLayout.CENTER);
+        root.add(txCard);
     }
 
     private static JLabel label(String text, Color fg, int l, int t, int r, int b){
@@ -138,7 +150,7 @@ public class HomePage extends JPanel {
         return card;
     }
 
-    private JScrollPane buildTransactionsTable(){
+    private JComponent buildTransactionsTable(){
         String[] cols = {"Tanggal", "Keterangan", "Kategori", "Nominal", "Saldo"};
         Object[][] rows = new Object[][]{
             {"18 Nov 2025", "Gaji Bulanan", "Pemasukan", "+ Rp 8.500.000", "Rp 45.250.000"},
@@ -175,9 +187,11 @@ public class HomePage extends JPanel {
         table.setRowHeight(28);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 1));
-        JScrollPane sp = new JScrollPane(table);
-        sp.getViewport().setBackground(Color.WHITE);
-        return sp;
+        JPanel wrap = new JPanel(new BorderLayout());
+        wrap.setOpaque(false);
+        wrap.add(table.getTableHeader(), BorderLayout.NORTH);
+        wrap.add(table, BorderLayout.CENTER);
+        return wrap;
     }
 
     private JComponent buildUpcomingBills(){
@@ -189,9 +203,11 @@ public class HomePage extends JPanel {
         wrap.add(billItem("Asuransi Kesehatan", "Rp 500.000", "28 Nov 2025"));
         wrap.add(Box.createVerticalStrut(10));
         wrap.add(billItem("Kartu Kredit", "Rp 1.250.000", "30 Nov 2025"));
-        return new JScrollPane(wrap){
+        JScrollPane sp = new JScrollPane(wrap){
             { getViewport().setOpaque(false); setOpaque(false); setBorder(null); }
         };
+        ScrollUtil.apply(sp);
+        return sp;
     }
 
     private JComponent billItem(String name, String amount, String due){

@@ -3,8 +3,12 @@ import java.awt.*;
 import utils.FontUtil;
 
 public class Main {
-    private static final String HOME = "HOME";
-    private static final String SETTINGS = "SETTINGS";
+    private static final String DASHBOARD = "dashboard";
+    private static final String TRANSAKSI = "transaksi";
+    private static final String LAPORAN = "laporan";
+    private static final String AKUN = "akun";
+    private static final String KATEGORI = "kategori";
+    private static final String PENGATURAN = "pengaturan";
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(Main::createAndShowUI);
@@ -14,7 +18,7 @@ public class Main {
         // Apply global font family chain (Swing equivalent of JavaFX label.setStyle)
         FontUtil.applyGlobalFont("Segoe UI", "San Francisco", "SF Pro Text", "Ubuntu", "Noto Sans", "Arial", "SansSerif");
 
-        JFrame frame = new JFrame("Reusable Sidebar Demo");
+        JFrame frame = new JFrame("FinTrack - Financial Tracker");
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         frame.setSize(1280, 700);
         frame.setLocationRelativeTo(null);
@@ -37,8 +41,12 @@ public class Main {
 
         // Content area with CardLayout to switch pages
         JPanel content = new JPanel(new CardLayout());
-        content.add(new HomePage(), HOME);
-        content.add(new SettingsPage(), SETTINGS);
+        content.add(new HomePage(), DASHBOARD);
+        content.add(new TransaksiPage(), TRANSAKSI);
+        content.add(new LaporanPage(), LAPORAN);
+        content.add(new AkunWalletPage(), AKUN);
+        content.add(new KategoriPage(), KATEGORI);
+        content.add(new SettingsPage(), PENGATURAN);
 
         // Sidebar with navigation callback to switch cards
         Sidebar sidebar = new Sidebar(route -> switchTo(content, route));
@@ -47,8 +55,8 @@ public class Main {
         root.add(content, BorderLayout.CENTER);
 
         frame.setVisible(true);
-        // Ensure default is HOME
-        switchTo(content, HOME);
+        // Ensure default is Dashboard
+        switchTo(content, DASHBOARD);
     }
 
     private static void switchTo(JPanel content, String route) {
