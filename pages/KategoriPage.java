@@ -3,21 +3,25 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
 import utils.ScrollUtil;
+import utils.CategoryStore;
 
 public class KategoriPage extends JPanel {
     private boolean editMode = false;
     private String selectedType = "expense";
+    private int editingIndex = -1;
+    private boolean editingIncome = false;
 
-    private final List<Category> incomeCategories = Arrays.asList(
+    private final List<Category> incomeCategories = new ArrayList<>(Arrays.asList(
         new Category("Gaji", "GI", 12, 102_000_000, new Color(5,150,105)),
         new Category("Freelance", "FR", 8, 18_500_000, new Color(14,165,233)),
         new Category("Investasi", "IV", 5, 6_200_000, new Color(139,92,246)),
         new Category("Bisnis", "BS", 24, 45_800_000, new Color(245,158,11)),
         new Category("Lainnya", "LN", 6, 3_500_000, new Color(100,116,139))
-    );
+    ));
 
-    private final List<Category> expenseCategories = Arrays.asList(
+    private final List<Category> expenseCategories = new ArrayList<>(Arrays.asList(
         new Category("Makanan & Minuman", "MM", 87, 27_500_000, new Color(37,99,235)),
         new Category("Transportasi", "TR", 52, 16_500_000, new Color(5,150,105)),
         new Category("Belanja", "BL", 34, 19_800_000, new Color(220,38,38)),
@@ -27,7 +31,7 @@ public class KategoriPage extends JPanel {
         new Category("Entertainment", "EN", 28, 4_800_000, new Color(6,182,212)),
         new Category("Cicilan", "CC", 11, 38_500_000, new Color(239,68,68)),
         new Category("Lainnya", "LA", 23, 10_450_000, new Color(100,116,139))
-    );
+    ));
 
     private final JPanel categoriesList = new JPanel();
     private final CardLayout rightCards = new CardLayout();
@@ -36,6 +40,9 @@ public class KategoriPage extends JPanel {
     private TabButton expenseTab;
     private TabButton incomeTab;
     private JButton saveButton;
+    private JComboBox<String> formTypeCombo;
+    private JTextField formNameField;
+    private JTextField formIconField;
 
     public KategoriPage() {
         setLayout(new BorderLayout());
@@ -164,6 +171,48 @@ public class KategoriPage extends JPanel {
         renderCategoryList();
     }
 
+    private void handleSaveCategory() {
+        String type = formTypeCombo.getSelectedItem() == null ? "Pengeluaran" : formTypeCombo.getSelectedItem().toString();
+        String name = formNameField.getText().trim();
+        if (name.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Nama kategori harus diisi", "Validasi", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String icon = formIconField.getText().trim();
+        if (icon.isEmpty()) icon = name.substring(0, Math.min(2, name.length())).toUpperCase();
+        Color accent = "Pengeluaran".equalsIgnoreCase(type) ? new Color(37,99,235) : new Color(5,150,105);
+        Category cat = new Category(name, icon, 0, 0, accent);
+        if (editMode && editingIndex >= 0) {
+            if ("Pengeluaran".equalsIgnoreCase(type)) {
+                if (editingIncome) incomeCategories.remove(editingIndex);
+                ensureIndex(expenseCategories, editingIndex, cat);
+            } else {
+                if (!editingIncome) expenseCategories.remove(editingIndex);
+                ensureIndex(incomeCategories, editingIndex, cat);
+            }
+        } else {
+            if ("Pengeluaran".equalsIgnoreCase(type)) {
+                expenseCategories.add(cat);
+            } else {
+                incomeCategories.add(cat);
+            }
+        }
+        CategoryStore.addCategory(type, name);
+        editMode = false;
+        editingIndex = -1;
+        editingIncome = false;
+        renderCategoryList();
+        rightCards.show(rightPanelCards, "stats");
+    }
+
+    private void ensureIndex(List<Category> list, int index, Category value){
+        if(index >= 0 && index < list.size()){
+            list.set(index, value);
+        } else {
+            list.add(value);
+        }
+    }
+
     private void renderCategoryList() {
         categoriesList.removeAll();
         List<Category> items = "income".equals(selectedType) ? incomeCategories : expenseCategories;
@@ -228,11 +277,27 @@ public class KategoriPage extends JPanel {
         JButton editBtn = actionIconButton("Edit");
         editBtn.addActionListener(e -> {
             editMode = true;
+            List<Category> items = "income".equals(selectedType) ? incomeCategories : expenseCategories;
+            editingIndex = items.indexOf(category);
+            editingIncome = "income".equals(selectedType);
             formTitle.setText("Edit Kategori");
             saveButton.setText("Update");
+            formTypeCombo.setSelectedItem(editingIncome ? "Pemasukan" : "Pengeluaran");
+            formNameField.setText(category.name);
+            formIconField.setText(category.icon);
             rightCards.show(rightPanelCards, "form");
         });
         JButton deleteBtn = actionIconButton("Hapus");
+        deleteBtn.addActionListener(e -> {
+            if ("income".equals(selectedType)) {
+                incomeCategories.remove(category);
+                CategoryStore.removeCategory(CategoryStore.INCOME, category.name);
+            } else {
+                expenseCategories.remove(category);
+                CategoryStore.removeCategory(CategoryStore.EXPENSE, category.name);
+            }
+            renderCategoryList();
+        });
         actions.add(editBtn);
         actions.add(deleteBtn);
         right.add(actions, BorderLayout.EAST);
@@ -294,11 +359,14 @@ public class KategoriPage extends JPanel {
         fields.setOpaque(false);
         fields.setLayout(new BoxLayout(fields, BoxLayout.Y_AXIS));
 
-        fields.add(createFormField("Tipe Kategori", new JComboBox<>(new String[]{"Pengeluaran", "Pemasukan"})));
+        formTypeCombo = new JComboBox<>(new String[]{"Pengeluaran", "Pemasukan"});
+        fields.add(createFormField("Tipe Kategori", formTypeCombo));
         fields.add(Box.createVerticalStrut(12));
-        fields.add(createFormField("Nama Kategori", new JTextField("Makanan & Minuman")));
+        formNameField = new JTextField("Makanan & Minuman");
+        fields.add(createFormField("Nama Kategori", formNameField));
         fields.add(Box.createVerticalStrut(12));
-        fields.add(createFormField("Icon (2 huruf/emoji)", new JTextField("MM")));
+        formIconField = new JTextField("MM");
+        fields.add(createFormField("Icon (2 huruf/emoji)", formIconField));
         fields.add(Box.createVerticalStrut(12));
         fields.add(colorPalette());
         fields.add(Box.createVerticalStrut(12));
@@ -329,6 +397,7 @@ public class KategoriPage extends JPanel {
         buttons.setOpaque(false);
         buttons.setBorder(new EmptyBorder(16, 0, 0, 0));
         saveButton = new RoundedButton("Simpan", true);
+        saveButton.addActionListener(e -> handleSaveCategory());
         JButton cancelBtn = new RoundedButton("Batal", false);
         cancelBtn.addActionListener(e -> rightCards.show(rightPanelCards, "stats"));
         buttons.add(saveButton);

@@ -2,8 +2,11 @@ package utils;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 import javax.swing.plaf.basic.BasicComboBoxUI;
 import java.awt.*;
+import utils.ScrollUtil;
 
 public final class ComboUtil {
     private ComboUtil() {}
@@ -26,6 +29,27 @@ public final class ComboUtil {
             }
             return lbl;
         });
+        combo.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                SwingUtilities.invokeLater(() -> applyPopupScroll(combo));
+            }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
+    }
+
+    private static void applyPopupScroll(JComboBox<?> combo){
+        Object ui = combo.getUI();
+        if (ui instanceof BasicComboBoxUI basicUi) {
+            JPopupMenu popup = (JPopupMenu) basicUi.getAccessibleChild(combo, 0);
+            if (popup != null) {
+                for (Component c : popup.getComponents()) {
+                    if (c instanceof JScrollPane sp) {
+                        ScrollUtil.apply(sp);
+                    }
+                }
+            }
+        }
     }
 
     private static class ModernComboBoxUI extends BasicComboBoxUI {

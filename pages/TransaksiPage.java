@@ -7,11 +7,24 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import utils.ScrollUtil;
 import utils.ComboUtil;
+import utils.CategoryStore;
+import utils.AccountStore;
 
 public class TransaksiPage extends JPanel {
     private boolean editMode = false;
+    private int editingRow = -1;
     private JLabel formTitle;
     private JButton saveBtn;
+    private DefaultTableModel tableModel;
+    private JTable table;
+    private JTextField dateField;
+    private JComboBox<String> typeCombo;
+    private JComboBox<String> accountCombo;
+    private JComboBox<String> categoryCombo;
+    private JTextField nominalField;
+    private JTextField descField;
+    private JLabel pageInfo;
+    private CategoryStore.Snapshot categorySnapshot = CategoryStore.snapshot();
     public TransaksiPage() {
         setLayout(new BorderLayout());
 
@@ -66,10 +79,22 @@ public class TransaksiPage extends JPanel {
         JButton filterBtn = new RoundedButton("Filter", false);
         JTextField dateFilter = new JTextField("2025-11-18");
         dateFilter.setPreferredSize(new Dimension(140, 28));
-        JComboBox<String> categoryFilter = new JComboBox<>(new String[]{"Semua Kategori", "Pemasukan", "Belanja", "Tagihan", "Makanan", "Transportasi"});
-        JComboBox<String> accountFilter = new JComboBox<>(new String[]{"Semua Akun", "BCA", "Mandiri", "Cash"});
+        JComboBox<String> categoryFilter = new JComboBox<>();
+        JComboBox<String> accountFilter = new JComboBox<>();
         ComboUtil.apply(categoryFilter);
         ComboUtil.apply(accountFilter);
+        CategoryStore.addListener(snap -> {
+            categorySnapshot = snap;
+            categoryFilter.removeAllItems();
+            categoryFilter.addItem("Semua Kategori");
+            snap.expenses().forEach(categoryFilter::addItem);
+            snap.incomes().forEach(categoryFilter::addItem);
+        });
+        AccountStore.addListener(accSnap -> {
+            accountFilter.removeAllItems();
+            accountFilter.addItem("Semua Akun");
+            accSnap.accounts().forEach(a -> accountFilter.addItem(a.name()));
+        });
         toolbar.add(filterBtn);
         toolbar.add(dateFilter);
         toolbar.add(categoryFilter);
@@ -78,22 +103,10 @@ public class TransaksiPage extends JPanel {
 
         // Table
         String[] cols = {"Tanggal", "Keterangan", "Kategori", "Debit", "Kredit", "Saldo", "Aksi"};
-        Object[][] rows = new Object[][]{
-            {"18/11/2025", "Gaji Bulanan", "Pemasukan", "Rp 8.500.000", "-", "Rp 45.250.000", "Edit / Hapus"},
-            {"17/11/2025", "Belanja Bulanan", "Belanja", "-", "Rp 1.200.000", "Rp 36.750.000", "Edit / Hapus"},
-            {"16/11/2025", "Bayar Listrik", "Tagihan", "-", "Rp 450.000", "Rp 37.950.000", "Edit / Hapus"},
-            {"15/11/2025", "Makan Siang", "Makanan", "-", "Rp 75.000", "Rp 38.400.000", "Edit / Hapus"},
-            {"14/11/2025", "Freelance Project", "Pemasukan", "Rp 2.500.000", "-", "Rp 38.475.000", "Edit / Hapus"},
-            {"13/11/2025", "Transportasi", "Transportasi", "-", "Rp 150.000", "Rp 35.975.000", "Edit / Hapus"},
-            {"12/11/2025", "Bayar Internet", "Tagihan", "-", "Rp 350.000", "Rp 36.125.000", "Edit / Hapus"},
-            {"11/11/2025", "Cicilan Usaha", "Pemasukan", "Rp 1.500.000", "-", "Rp 36.475.000", "Edit / Hapus"},
-            {"10/11/2025", "Belanja Groceries", "Belanja", "-", "Rp 850.000", "Rp 34.975.000", "Edit / Hapus"},
-            {"09/11/2025", "Penjualan Produk", "Pemasukan", "Rp 3.200.000", "-", "Rp 35.825.000", "Edit / Hapus"},
-        };
-        DefaultTableModel model = new DefaultTableModel(rows, cols) {
+        tableModel = new DefaultTableModel(new Object[0][0], cols) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
-        JTable table = new JTable(model) {
+        table = new JTable(tableModel) {
             @Override public Component prepareRenderer(TableCellRenderer r, int row, int col) {
                 Component c = super.prepareRenderer(r, row, col);
                 if (!isRowSelected(row)) {
@@ -130,10 +143,13 @@ public class TransaksiPage extends JPanel {
             public void mouseClicked(MouseEvent e) {
                 int col = table.columnAtPoint(e.getPoint());
                 if (col == 6) {
-                    editMode = true;
-                    formTitle.setText("Edit Transaksi");
-                    if (saveBtn != null) {
-                        saveBtn.setText("Update");
+                    int row = table.rowAtPoint(e.getPoint());
+                    Rectangle cell = table.getCellRect(row, col, true);
+                    int xWithin = e.getX() - cell.x;
+                    if (xWithin < cell.width / 2) {
+                        loadRowForEdit(row);
+                    } else {
+                        deleteRow(row);
                     }
                 }
             }
@@ -148,7 +164,7 @@ public class TransaksiPage extends JPanel {
         JPanel pagination = new JPanel(new BorderLayout());
         pagination.setOpaque(false);
         pagination.setBorder(new EmptyBorder(12, 0, 0, 0));
-        JLabel pageInfo = new JLabel("Showing 1-10 of 1,247 transaksi");
+        pageInfo = new JLabel("Total: 0 transaksi");
         pageInfo.setForeground(color(71, 85, 105));
         pagination.add(pageInfo, BorderLayout.WEST);
         JPanel pageControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
@@ -195,23 +211,35 @@ public class TransaksiPage extends JPanel {
         JPanel formFields = new JPanel();
         formFields.setLayout(new BoxLayout(formFields, BoxLayout.Y_AXIS));
         formFields.setOpaque(false);
-        formFields.add(createFormField("Tanggal", new JTextField("2025-11-18")));
+        dateField = new JTextField("2025-11-18");
+        formFields.add(createFormField("Tanggal", dateField));
         formFields.add(Box.createVerticalStrut(12));
-        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Pengeluaran (Kredit)", "Pemasukan (Debit)"});
+        typeCombo = new JComboBox<>(new String[]{"Pengeluaran", "Pemasukan"});
         ComboUtil.apply(typeCombo);
         formFields.add(createFormField("Tipe Transaksi", typeCombo));
         formFields.add(Box.createVerticalStrut(12));
-        JComboBox<String> accountCombo = new JComboBox<>(new String[]{"BCA - Rp 45.250.000", "Mandiri - Rp 12.500.000", "Cash - Rp 2.150.000"});
+        accountCombo = new JComboBox<>();
         ComboUtil.apply(accountCombo);
+        AccountStore.addListener(accSnap -> {
+            accountCombo.removeAllItems();
+            accSnap.accounts().forEach(a -> accountCombo.addItem(a.name()));
+        });
         formFields.add(createFormField("Akun", accountCombo));
         formFields.add(Box.createVerticalStrut(12));
-        JComboBox<String> categoryCombo = new JComboBox<>(new String[]{"Pemasukan", "Makanan & Minuman", "Transportasi", "Belanja", "Tagihan", "Lainnya"});
+        categoryCombo = new JComboBox<>();
         ComboUtil.apply(categoryCombo);
+        CategoryStore.addListener(snap -> {
+            categorySnapshot = snap;
+            refreshCategoryCombo();
+        });
+        typeCombo.addActionListener(e -> refreshCategoryCombo());
         formFields.add(createFormField("Kategori", categoryCombo));
         formFields.add(Box.createVerticalStrut(12));
-        formFields.add(createFormField("Nominal", new JTextField()));
+        nominalField = new JTextField();
+        formFields.add(createFormField("Nominal", nominalField));
         formFields.add(Box.createVerticalStrut(12));
-        formFields.add(createFormField("Keterangan", new JTextField()));
+        descField = new JTextField();
+        formFields.add(createFormField("Keterangan", descField));
         formFields.add(Box.createVerticalStrut(12));
         
         JPanel notesPanel = new JPanel();
@@ -239,9 +267,11 @@ public class TransaksiPage extends JPanel {
         formButtons.setOpaque(false);
         formButtons.setBorder(new EmptyBorder(16, 0, 0, 0));
         saveBtn = new RoundedButton("Simpan", true);
+        saveBtn.addActionListener(e -> handleSave());
         JButton cancelBtn = new RoundedButton("Batal", false);
         cancelBtn.addActionListener(e -> {
             editMode = false;
+            editingRow = -1;
             formTitle.setText("Tambah Transaksi Baru");
             saveBtn.setText("Simpan");
         });
@@ -273,9 +303,131 @@ public class TransaksiPage extends JPanel {
 
     public void startNewTransaction() {
         editMode = false;
+        editingRow = -1;
         formTitle.setText("Tambah Transaksi Baru");
         if (saveBtn != null) {
             saveBtn.setText("Simpan");
+        }
+        dateField.setText("2025-11-18");
+        typeCombo.setSelectedIndex(0);
+        accountCombo.setSelectedIndex(0);
+        categoryCombo.setSelectedIndex(0);
+        nominalField.setText("");
+        descField.setText("");
+    }
+
+    private void handleSave() {
+        String date = dateField.getText().trim();
+        String desc = descField.getText().trim();
+        String category = (String) categoryCombo.getSelectedItem();
+        String type = (String) typeCombo.getSelectedItem();
+        String nominalText = nominalField.getText().trim();
+
+        if (date.isEmpty() || desc.isEmpty() || nominalText.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Tanggal, Keterangan, dan Nominal harus diisi.", "Validasi", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        long amount = parseNumber(nominalText);
+        if (amount <= 0) {
+            JOptionPane.showMessageDialog(this, "Nominal harus lebih besar dari 0.", "Validasi", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        boolean isIncome = "Pemasukan".equalsIgnoreCase(type != null ? type.trim() : "");
+        String debit = isIncome ? formatRupiah(amount) : "-";
+        String credit = isIncome ? "-" : formatRupiah(amount);
+
+        long currentBalance = parseNumber(getCurrentBalance());
+        long newBalanceTop = isIncome ? currentBalance + amount : currentBalance - amount;
+        String balanceStr = formatRupiah(newBalanceTop);
+
+        if (editMode && editingRow >= 0 && editingRow < tableModel.getRowCount()) {
+            long baseBalance = (editingRow + 1 < tableModel.getRowCount())
+                ? parseNumber(tableModel.getValueAt(editingRow + 1, 5).toString())
+                : parseNumber(getCurrentBalance());
+            String newBalance = formatRupiah(isIncome ? baseBalance + amount : baseBalance - amount);
+            tableModel.setValueAt(date, editingRow, 0);
+            tableModel.setValueAt(desc, editingRow, 1);
+            tableModel.setValueAt(category, editingRow, 2);
+            tableModel.setValueAt(debit, editingRow, 3);
+            tableModel.setValueAt(credit, editingRow, 4);
+            tableModel.setValueAt(newBalance, editingRow, 5);
+            tableModel.setValueAt("Edit | Hapus", editingRow, 6);
+        } else {
+            tableModel.insertRow(0, new Object[]{
+                date, desc, category, debit, credit, balanceStr, "Edit | Hapus"
+            });
+        }
+
+        startNewTransaction();
+        updatePagination();
+    }
+
+    private String getCurrentBalance() {
+        if (tableModel.getRowCount() == 0) return "0";
+        Object val = tableModel.getValueAt(0, 5);
+        return val == null ? "0" : val.toString();
+    }
+
+    private long parseNumber(String text) {
+        String digits = text.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) return 0;
+        try {
+            return Long.parseLong(digits);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private String formatRupiah(long value) {
+        String raw = String.format("%,d", value).replace(",", ".");
+        return "Rp " + raw;
+    }
+
+    private void loadRowForEdit(int row) {
+        if (row < 0 || row >= tableModel.getRowCount()) return;
+        editingRow = row;
+        editMode = true;
+        formTitle.setText("Edit Transaksi");
+        saveBtn.setText("Update");
+
+        dateField.setText(tableModel.getValueAt(row, 0).toString());
+        descField.setText(tableModel.getValueAt(row, 1).toString());
+        categoryCombo.setSelectedItem(tableModel.getValueAt(row, 2));
+
+        String debit = tableModel.getValueAt(row, 3).toString();
+        String credit = tableModel.getValueAt(row, 4).toString();
+        boolean isIncome = !debit.equals("-");
+        typeCombo.setSelectedIndex(isIncome ? 1 : 0);
+        String amountStr = isIncome ? debit : credit;
+        nominalField.setText(String.valueOf(parseNumber(amountStr)));
+    }
+
+    private void deleteRow(int row) {
+        if (row < 0 || row >= tableModel.getRowCount()) return;
+        tableModel.removeRow(row);
+        if (editingRow == row) {
+            startNewTransaction();
+        }
+        updatePagination();
+    }
+
+    private void updatePagination() {
+        if (pageInfo != null) {
+            pageInfo.setText("Total: " + tableModel.getRowCount() + " transaksi");
+        }
+    }
+
+    private void refreshCategoryCombo() {
+        if (categoryCombo == null || categorySnapshot == null) return;
+        Object selectedType = typeCombo.getSelectedItem();
+        boolean isIncome = selectedType != null && "Pemasukan".equalsIgnoreCase(selectedType.toString());
+        categoryCombo.removeAllItems();
+        if (isIncome) {
+            categorySnapshot.incomes().forEach(categoryCombo::addItem);
+        } else {
+            categorySnapshot.expenses().forEach(categoryCombo::addItem);
         }
     }
 
