@@ -10,6 +10,7 @@ public class AkunWalletPage extends JPanel {
     private final JLabel bankCountLabel;
     private final JLabel walletCountLabel;
     private final JLabel cashLabel;
+    private final JLabel creditLabel;
     private AccountStore.Snapshot snapshot = AccountStore.snapshot();
 
     public AkunWalletPage() {
@@ -47,17 +48,19 @@ public class AkunWalletPage extends JPanel {
         add(header, BorderLayout.NORTH);
 
         // Summary Cards
-        JPanel summaryCards = new JPanel(new GridLayout(1, 4, 12, 12));
+        JPanel summaryCards = new JPanel(new GridLayout(1, 5, 12, 12));
         summaryCards.setOpaque(false);
-        summaryCards.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+        summaryCards.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
         totalSaldoLabel = buildSummaryCard("Total Saldo", "Rp 0", color(37, 99, 235));
         bankCountLabel = buildSummaryCard("Akun Bank", "0 akun", color(5, 150, 105));
         walletCountLabel = buildSummaryCard("Dompet Digital", "0 wallet", color(245, 158, 11));
         cashLabel = buildSummaryCard("Cash", "Rp 0", color(100, 116, 139));
+        creditLabel = buildSummaryCard("Kredit", "0 kartu", color(109, 40, 217));
         summaryCards.add(totalSaldoLabel);
         summaryCards.add(bankCountLabel);
         summaryCards.add(walletCountLabel);
         summaryCards.add(cashLabel);
+        summaryCards.add(creditLabel);
         root.add(summaryCards);
         root.add(Box.createVerticalStrut(16));
 
@@ -93,7 +96,7 @@ public class AkunWalletPage extends JPanel {
         JTextField nameField = new JTextField();
         JTextField numberField = new JTextField();
         JTextField balanceField = new JTextField();
-        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Bank", "Dompet Digital", "Cash"});
+        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"Bank", "Dompet Digital", "Cash", "Kredit"});
 
         JPanel form = new JPanel();
         form.setLayout(new GridLayout(0, 1, 6, 6));
@@ -118,12 +121,6 @@ public class AkunWalletPage extends JPanel {
             return;
         }
 
-        Color accent = switch (type) {
-            case "Bank" -> color(37, 99, 235);
-            case "Dompet Digital" -> color(245, 158, 11);
-            default -> color(100, 116, 139);
-        };
-        String icon = type.equals("Bank") ? "BK" : type.equals("Dompet Digital") ? "DW" : "CA";
         AccountStore.addAccount(name, number.isEmpty() ? "-" : number, balance, type);
     }
 
@@ -149,9 +146,18 @@ public class AkunWalletPage extends JPanel {
 
         JPanel iconPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         iconPanel.setOpaque(false);
-        JLabel iconLbl = new JLabel(acc.type().equals(AccountStore.TYPE_BANK) ? "BK" : acc.type().equals(AccountStore.TYPE_WALLET) ? "DW" : "CA");
+        JLabel iconLbl = new JLabel(switch (acc.type()) {
+            case AccountStore.TYPE_BANK -> "BK";
+            case AccountStore.TYPE_WALLET -> "DW";
+            case AccountStore.TYPE_CREDIT -> "CR";
+            default -> "CA";
+        });
         iconLbl.setFont(iconLbl.getFont().deriveFont(Font.BOLD, 16f));
-        iconLbl.setForeground(color(37, 99, 235));
+        Color accent = acc.type().equals(AccountStore.TYPE_BANK) ? color(37,99,235)
+            : acc.type().equals(AccountStore.TYPE_WALLET) ? color(245,158,11)
+            : acc.type().equals(AccountStore.TYPE_CREDIT) ? color(109,40,217)
+            : color(100,116,139);
+        iconLbl.setForeground(accent);
         iconLbl.setBorder(new EmptyBorder(8, 12, 8, 12));
         iconPanel.add(iconLbl);
         top.add(iconPanel, BorderLayout.WEST);
@@ -187,9 +193,6 @@ public class AkunWalletPage extends JPanel {
         numberLbl.setAlignmentX(LEFT_ALIGNMENT);
 
         JLabel balanceLbl = new JLabel("Rp " + String.format("%,d", acc.balance()).replace(',', '.'));
-        Color accent = acc.type().equals(AccountStore.TYPE_BANK) ? color(37,99,235)
-            : acc.type().equals(AccountStore.TYPE_WALLET) ? color(245,158,11)
-            : color(100,116,139);
         balanceLbl.setForeground(accent);
         balanceLbl.setFont(balanceLbl.getFont().deriveFont(Font.BOLD, 20f));
         balanceLbl.setAlignmentX(LEFT_ALIGNMENT);
@@ -228,11 +231,13 @@ public class AkunWalletPage extends JPanel {
         long bankCount = snapshot.accounts().stream().filter(a -> a.type().equals(AccountStore.TYPE_BANK)).count();
         long walletCount = snapshot.accounts().stream().filter(a -> a.type().equals(AccountStore.TYPE_WALLET)).count();
         long cash = snapshot.accounts().stream().filter(a -> a.type().equals(AccountStore.TYPE_CASH)).mapToLong(AccountStore.Account::balance).sum();
+        long credit = snapshot.accounts().stream().filter(a -> a.type().equals(AccountStore.TYPE_CREDIT)).count();
 
         totalSaldoLabel.setText("Rp " + String.format("%,d", total).replace(',', '.'));
         bankCountLabel.setText(bankCount + " akun");
         walletCountLabel.setText(walletCount + " wallet");
         cashLabel.setText("Rp " + String.format("%,d", cash).replace(',', '.'));
+        creditLabel.setText(credit + " kartu");
     }
 
     private long parseNumber(String text) {

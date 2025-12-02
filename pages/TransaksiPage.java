@@ -5,10 +5,15 @@ import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import utils.ScrollUtil;
 import utils.ComboUtil;
 import utils.CategoryStore;
 import utils.AccountStore;
+import utils.TransactionStore;
 
 public class TransaksiPage extends JPanel {
     private boolean editMode = false;
@@ -25,6 +30,8 @@ public class TransaksiPage extends JPanel {
     private JTextField descField;
     private JLabel pageInfo;
     private CategoryStore.Snapshot categorySnapshot = CategoryStore.snapshot();
+    private final Map<String, String> accountTypeMap = new HashMap<>();
+    private final List<String> rowIds = new ArrayList<>();
     public TransaksiPage() {
         setLayout(new BorderLayout());
 
@@ -102,7 +109,7 @@ public class TransaksiPage extends JPanel {
         tableCard.add(toolbar, BorderLayout.NORTH);
 
         // Table
-        String[] cols = {"Tanggal", "Keterangan", "Kategori", "Debit", "Kredit", "Saldo", "Aksi"};
+        String[] cols = {"Tanggal", "Keterangan", "Kategori", "Akun", "Debit", "Kredit", "Saldo", "Aksi"};
         tableModel = new DefaultTableModel(new Object[0][0], cols) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -112,19 +119,19 @@ public class TransaksiPage extends JPanel {
                 if (!isRowSelected(row)) {
                     c.setBackground(row % 2 == 0 ? new Color(248, 250, 252) : Color.WHITE);
                 }
-                if (col == 3) { // Debit
+                if (col == 4) { // Debit
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.RIGHT);
                     l.setForeground(l.getText().equals("-") ? new Color(71, 85, 105) : new Color(5, 150, 105));
-                } else if (col == 4) { // Kredit
+                } else if (col == 5) { // Kredit
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.RIGHT);
                     l.setForeground(l.getText().equals("-") ? new Color(71, 85, 105) : new Color(220, 38, 38));
-                } else if (col == 5) { // Saldo
+                } else if (col == 6) { // Saldo
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.RIGHT);
                     l.setForeground(new Color(30, 41, 59));
-                } else if (col == 6) {
+                } else if (col == 7) {
                     JLabel l = (JLabel) c;
                     l.setHorizontalAlignment(SwingConstants.CENTER);
                     l.setForeground(new Color(37, 99, 235));
@@ -137,12 +144,12 @@ public class TransaksiPage extends JPanel {
         table.getTableHeader().setReorderingAllowed(false);
         table.setRowHeight(28);
         table.setShowGrid(false);
-        table.getColumnModel().getColumn(6).setPreferredWidth(120);
+        table.getColumnModel().getColumn(7).setPreferredWidth(120);
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 int col = table.columnAtPoint(e.getPoint());
-                if (col == 6) {
+                if (col == 7) {
                     int row = table.rowAtPoint(e.getPoint());
                     Rectangle cell = table.getCellRect(row, col, true);
                     int xWithin = e.getX() - cell.x;
@@ -222,7 +229,11 @@ public class TransaksiPage extends JPanel {
         ComboUtil.apply(accountCombo);
         AccountStore.addListener(accSnap -> {
             accountCombo.removeAllItems();
-            accSnap.accounts().forEach(a -> accountCombo.addItem(a.name()));
+            accountTypeMap.clear();
+            accSnap.accounts().forEach(a -> {
+                accountCombo.addItem(a.name());
+                accountTypeMap.put(a.name(), a.type());
+            });
         });
         formFields.add(createFormField("Akun", accountCombo));
         formFields.add(Box.createVerticalStrut(12));
@@ -284,6 +295,10 @@ public class TransaksiPage extends JPanel {
 
         // Add vertical glue to give scroll some slack
         root.add(Box.createVerticalGlue());
+
+        // Load initial data from store
+        loadFromStore(TransactionStore.snapshot());
+        TransactionStore.addListener(this::loadFromStore);
     }
 
     private JPanel createFormField(String label, JComponent field) {
@@ -310,8 +325,12 @@ public class TransaksiPage extends JPanel {
         }
         dateField.setText("2025-11-18");
         typeCombo.setSelectedIndex(0);
-        accountCombo.setSelectedIndex(0);
-        categoryCombo.setSelectedIndex(0);
+        if (accountCombo.getItemCount() > 0) {
+            accountCombo.setSelectedIndex(0);
+        }
+        if (categoryCombo.getItemCount() > 0) {
+            categoryCombo.setSelectedIndex(0);
+        }
         nominalField.setText("");
         descField.setText("");
     }
@@ -321,6 +340,9 @@ public class TransaksiPage extends JPanel {
         String desc = descField.getText().trim();
         String category = (String) categoryCombo.getSelectedItem();
         String type = (String) typeCombo.getSelectedItem();
+        String accountName = (String) accountCombo.getSelectedItem();
+        String accountType = accountTypeMap.getOrDefault(accountName, "-");
+        String accountLabel = (accountName == null || accountName.isBlank()) ? "-" : accountName;
         String nominalText = nominalField.getText().trim();
 
         if (date.isEmpty() || desc.isEmpty() || nominalText.isEmpty()) {
@@ -334,40 +356,15 @@ public class TransaksiPage extends JPanel {
             return;
         }
 
-        boolean isIncome = "Pemasukan".equalsIgnoreCase(type != null ? type.trim() : "");
-        String debit = isIncome ? formatRupiah(amount) : "-";
-        String credit = isIncome ? "-" : formatRupiah(amount);
-
-        long currentBalance = parseNumber(getCurrentBalance());
-        long newBalanceTop = isIncome ? currentBalance + amount : currentBalance - amount;
-        String balanceStr = formatRupiah(newBalanceTop);
-
         if (editMode && editingRow >= 0 && editingRow < tableModel.getRowCount()) {
-            long baseBalance = (editingRow + 1 < tableModel.getRowCount())
-                ? parseNumber(tableModel.getValueAt(editingRow + 1, 5).toString())
-                : parseNumber(getCurrentBalance());
-            String newBalance = formatRupiah(isIncome ? baseBalance + amount : baseBalance - amount);
-            tableModel.setValueAt(date, editingRow, 0);
-            tableModel.setValueAt(desc, editingRow, 1);
-            tableModel.setValueAt(category, editingRow, 2);
-            tableModel.setValueAt(debit, editingRow, 3);
-            tableModel.setValueAt(credit, editingRow, 4);
-            tableModel.setValueAt(newBalance, editingRow, 5);
-            tableModel.setValueAt("Edit | Hapus", editingRow, 6);
+            String id = rowIds.get(editingRow);
+            TransactionStore.updateTransaction(id, date, type, category, accountLabel, accountType, amount, desc);
         } else {
-            tableModel.insertRow(0, new Object[]{
-                date, desc, category, debit, credit, balanceStr, "Edit | Hapus"
-            });
+            TransactionStore.addTransaction(date, type, category, accountLabel, accountType, amount, desc);
         }
 
         startNewTransaction();
-        updatePagination();
-    }
-
-    private String getCurrentBalance() {
-        if (tableModel.getRowCount() == 0) return "0";
-        Object val = tableModel.getValueAt(0, 5);
-        return val == null ? "0" : val.toString();
+        loadFromStore(TransactionStore.snapshot());
     }
 
     private long parseNumber(String text) {
@@ -385,6 +382,18 @@ public class TransaksiPage extends JPanel {
         return "Rp " + raw;
     }
 
+    private String formatWithType(String accountType, long amount) {
+        String label = switch (accountType) {
+            case AccountStore.TYPE_BANK -> "Bank";
+            case AccountStore.TYPE_WALLET -> "E-Wallet";
+            case AccountStore.TYPE_CASH -> "Cash";
+            case AccountStore.TYPE_CREDIT -> "Kredit";
+            default -> accountType == null ? "" : accountType;
+        };
+        String prefix = (label == null || label.isBlank()) ? "" : label + " • ";
+        return prefix + formatRupiah(amount);
+    }
+
     private void loadRowForEdit(int row) {
         if (row < 0 || row >= tableModel.getRowCount()) return;
         editingRow = row;
@@ -395,9 +404,13 @@ public class TransaksiPage extends JPanel {
         dateField.setText(tableModel.getValueAt(row, 0).toString());
         descField.setText(tableModel.getValueAt(row, 1).toString());
         categoryCombo.setSelectedItem(tableModel.getValueAt(row, 2));
+        Object accountVal = tableModel.getValueAt(row, 3);
+        if (accountVal != null) {
+            accountCombo.setSelectedItem(accountVal.toString());
+        }
 
-        String debit = tableModel.getValueAt(row, 3).toString();
-        String credit = tableModel.getValueAt(row, 4).toString();
+        String debit = tableModel.getValueAt(row, 4).toString();
+        String credit = tableModel.getValueAt(row, 5).toString();
         boolean isIncome = !debit.equals("-");
         typeCombo.setSelectedIndex(isIncome ? 1 : 0);
         String amountStr = isIncome ? debit : credit;
@@ -406,11 +419,15 @@ public class TransaksiPage extends JPanel {
 
     private void deleteRow(int row) {
         if (row < 0 || row >= tableModel.getRowCount()) return;
+        if (row < rowIds.size()) {
+            String id = rowIds.get(row);
+            TransactionStore.removeTransaction(id);
+        }
         tableModel.removeRow(row);
         if (editingRow == row) {
             startNewTransaction();
         }
-        updatePagination();
+        loadFromStore(TransactionStore.snapshot());
     }
 
     private void updatePagination() {
@@ -429,6 +446,32 @@ public class TransaksiPage extends JPanel {
         } else {
             categorySnapshot.expenses().forEach(categoryCombo::addItem);
         }
+    }
+
+    private void loadFromStore(TransactionStore.Snapshot snap) {
+        tableModel.setRowCount(0);
+        rowIds.clear();
+        long runningBalance = 0;
+        for (TransactionStore.Transaction tx : snap.transactions()) {
+            boolean isIncome = tx.isIncome();
+            long amount = tx.amount();
+            runningBalance += isIncome ? amount : -amount;
+            String debit = isIncome ? formatWithType(tx.accountType(), amount) : "-";
+            String credit = isIncome ? "-" : formatWithType(tx.accountType(), amount);
+            String desc = tx.description() == null || tx.description().isBlank() ? "-" : tx.description();
+            tableModel.addRow(new Object[]{
+                tx.date().toString(),
+                desc,
+                tx.category(),
+                tx.accountName(),
+                debit,
+                credit,
+                formatRupiah(runningBalance),
+                "Edit | Hapus"
+            });
+            rowIds.add(tx.id());
+        }
+        updatePagination();
     }
 
     private static Color color(int r, int g, int b) { return new Color(r, g, b); }

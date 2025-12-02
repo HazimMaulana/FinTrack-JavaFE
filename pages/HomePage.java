@@ -5,10 +5,27 @@ import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Path2D;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import utils.ScrollUtil;
+import utils.AccountStore;
+import utils.TransactionStore;
 
 public class HomePage extends JPanel {
+    private JLabel totalSaldoLabel;
+    private JLabel incomeLabel;
+    private JLabel expenseLabel;
+    private JLabel netLabel;
+    private JLabel netSubtitle;
+    private TrendChartPanel trendChart;
+    private CategoryPieChartPanel pieChart;
+    private DefaultTableModel recentTableModel;
+    private AccountStore.Snapshot accountSnapshot = AccountStore.snapshot();
+    private TransactionStore.Snapshot transactionSnapshot = TransactionStore.snapshot();
+
     public HomePage() {
         setLayout(new BorderLayout());
 
@@ -55,10 +72,15 @@ public class HomePage extends JPanel {
         JPanel cards = new JPanel(new GridLayout(1, 4, 12, 12));
         cards.setOpaque(false);
         cards.setBorder(new EmptyBorder(0, 0, 16, 0));
-        cards.add(buildSummaryCard("Total Saldo", "Rp 45.250.000", new WalletIcon(), color(37,99,235), color(239,246,255), null));
-        cards.add(buildSummaryCard("Pemasukan Bulan Ini", "Rp 12.500.000", new ArrowUpCircleIcon(), color(5,150,105), color(236,253,245), null));
-        cards.add(buildSummaryCard("Pengeluaran Bulan Ini", "Rp 8.750.000", new ArrowDownCircleIcon(), color(220,38,38), color(254,242,242), null));
-        cards.add(buildSummaryCard("Selisih (Profit/Loss)", "Rp 3.750.000", new TrendingUpIcon(), color(5,150,105), color(236,253,245), "+30.0% dari bulan lalu"));
+        totalSaldoLabel = new JLabel("Rp 0");
+        incomeLabel = new JLabel("Rp 0");
+        expenseLabel = new JLabel("Rp 0");
+        netLabel = new JLabel("Rp 0");
+        netSubtitle = new JLabel("+0% vs bulan lalu");
+        cards.add(buildSummaryCard("Total Saldo", totalSaldoLabel, new WalletIcon(), color(37,99,235), color(239,246,255), null));
+        cards.add(buildSummaryCard("Pemasukan Bulan Ini", incomeLabel, new ArrowUpCircleIcon(), color(5,150,105), color(236,253,245), null));
+        cards.add(buildSummaryCard("Pengeluaran Bulan Ini", expenseLabel, new ArrowDownCircleIcon(), color(220,38,38), color(254,242,242), null));
+        cards.add(buildSummaryCard("Selisih (Profit/Loss)", netLabel, new TrendingUpIcon(), color(5,150,105), color(236,253,245), netSubtitle));
         root.add(cards);
 
         // Charts row (2:1)
@@ -74,7 +96,7 @@ public class HomePage extends JPanel {
         JLabel lineTitle = label("Trend 6 Bulan Terakhir", color(30,41,59), 0, 0, 0, 0);
         lineTitle.setFont(lineTitle.getFont().deriveFont(Font.PLAIN, 14f));
         lineCard.add(lineTitle, BorderLayout.NORTH);
-        TrendChartPanel trendChart = new TrendChartPanel();
+        trendChart = new TrendChartPanel();
         trendChart.setPreferredSize(new Dimension(0, 300));
         lineCard.add(trendChart, BorderLayout.CENTER);
         chartsRow.add(lineCard, gc);
@@ -87,7 +109,7 @@ public class HomePage extends JPanel {
         JLabel pieTitle = label("Kategori Pengeluaran", color(30,41,59), 0, 0, 0, 0);
         pieTitle.setFont(pieTitle.getFont().deriveFont(Font.PLAIN, 14f));
         pieCard.add(pieTitle, BorderLayout.NORTH);
-        CategoryPieChartPanel pieChart = new CategoryPieChartPanel();
+        pieChart = new CategoryPieChartPanel();
         pieChart.setPreferredSize(new Dimension(0, 300));
         pieCard.add(pieChart, BorderLayout.CENTER);
         chartsRow.add(pieCard, gc);
@@ -104,6 +126,17 @@ public class HomePage extends JPanel {
         JComponent tablePane = buildTransactionsTable();
         txCard.add(tablePane, BorderLayout.CENTER);
         root.add(txCard);
+
+        // Sync with data stores
+        AccountStore.addListener(snap -> {
+            accountSnapshot = snap;
+            refreshData();
+        });
+        TransactionStore.addListener(snap -> {
+            transactionSnapshot = snap;
+            refreshData();
+        });
+        refreshData();
     }
 
     private static JLabel label(String text, Color fg, int l, int t, int r, int b){
@@ -115,7 +148,16 @@ public class HomePage extends JPanel {
 
     private static Color color(int r, int g, int b){ return new Color(r,g,b); }
 
-    private JComponent buildSummaryCard(String title, String value, Icon icon, Color accent, Color accentBg, String subtitle){
+    private String formatRupiah(long value){
+        String raw = String.format("%,d", value).replace(",", ".");
+        return "Rp " + raw;
+    }
+
+    private String formatSigned(long value, boolean income){
+        return (income ? "+ " : "- ") + formatRupiah(value);
+    }
+
+    private JComponent buildSummaryCard(String title, JLabel valueLabel, Icon icon, Color accent, Color accentBg, JLabel subtitleLabel){
         RoundPanel card = new RoundPanel(10, Color.WHITE, color(226,232,240));
         card.setLayout(new BorderLayout());
         JPanel top = new JPanel();
@@ -137,13 +179,15 @@ public class HomePage extends JPanel {
         content.setOpaque(false);
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         JLabel t1 = label(title, color(71,85,105), 8, 0, 0, 4);
-        JLabel v1 = label(value, color(30,41,59), 0, 0, 0, 0);
-        v1.setFont(v1.getFont().deriveFont(Font.PLAIN, v1.getFont().getSize2D() + 2f));
+        valueLabel.setForeground(color(30,41,59));
+        valueLabel.setBorder(new EmptyBorder(0, 0, 0, 0));
+        valueLabel.setFont(valueLabel.getFont().deriveFont(Font.PLAIN, valueLabel.getFont().getSize2D() + 2f));
         content.add(t1);
-        content.add(v1);
-        if(subtitle!=null && !subtitle.isEmpty()){
-            JLabel s1 = label(subtitle, color(5,150,105), 6, 0, 0, 0);
-            content.add(s1);
+        content.add(valueLabel);
+        if(subtitleLabel!=null){
+            subtitleLabel.setForeground(color(5,150,105));
+            subtitleLabel.setBorder(new EmptyBorder(6, 0, 0, 0));
+            content.add(subtitleLabel);
         }
         card.add(content, BorderLayout.CENTER);
         card.setBorder(new EmptyBorder(16,16,16,16));
@@ -152,20 +196,10 @@ public class HomePage extends JPanel {
 
     private JComponent buildTransactionsTable(){
         String[] cols = {"Tanggal", "Keterangan", "Kategori", "Nominal", "Saldo"};
-        Object[][] rows = new Object[][]{
-            {"18 Nov 2025", "Gaji Bulanan", "Pemasukan", "+ Rp 8.500.000", "Rp 45.250.000"},
-            {"17 Nov 2025", "Belanja Bulanan", "Belanja", "- Rp 1.200.000", "Rp 36.750.000"},
-            {"16 Nov 2025", "Bayar Listrik", "Tagihan", "- Rp 450.000", "Rp 37.950.000"},
-            {"15 Nov 2025", "Makan Siang", "Makanan", "- Rp 75.000", "Rp 38.400.000"},
-            {"14 Nov 2025", "Freelance Project", "Pemasukan", "+ Rp 2.500.000", "Rp 38.475.000"},
-            {"13 Nov 2025", "Transportasi", "Transportasi", "- Rp 150.000", "Rp 35.975.000"},
-            {"12 Nov 2025", "Bayar Internet", "Tagihan", "- Rp 350.000", "Rp 36.125.000"},
-            {"11 Nov 2025", "Cicilan Usaha", "Pemasukan", "+ Rp 1.500.000", "Rp 36.475.000"},
-        };
-        DefaultTableModel model = new DefaultTableModel(rows, cols){
+        recentTableModel = new DefaultTableModel(new Object[0][0], cols){
             @Override public boolean isCellEditable(int r, int c){ return false; }
         };
-        JTable table = new JTable(model){
+        JTable table = new JTable(recentTableModel){
             @Override public Component prepareRenderer(TableCellRenderer r, int row, int col){
                 Component c = super.prepareRenderer(r, row, col);
                 if(!isRowSelected(row)){
@@ -192,6 +226,85 @@ public class HomePage extends JPanel {
         wrap.add(table.getTableHeader(), BorderLayout.NORTH);
         wrap.add(table, BorderLayout.CENTER);
         return wrap;
+    }
+
+    private void refreshData() {
+        long totalSaldo = accountSnapshot.accounts().stream().mapToLong(AccountStore.Account::balance).sum();
+        totalSaldoLabel.setText(formatRupiah(totalSaldo));
+
+        YearMonth now = YearMonth.now();
+        YearMonth lastMonth = now.minusMonths(1);
+
+        long incomeThisMonth = transactionSnapshot.transactions().stream()
+            .filter(t -> t.yearMonth().equals(now) && t.isIncome())
+            .mapToLong(TransactionStore.Transaction::amount)
+            .sum();
+        long expenseThisMonth = transactionSnapshot.transactions().stream()
+            .filter(t -> t.yearMonth().equals(now) && !t.isIncome())
+            .mapToLong(TransactionStore.Transaction::amount)
+            .sum();
+        long netThisMonth = incomeThisMonth - expenseThisMonth;
+
+        long netLastMonth = transactionSnapshot.transactions().stream()
+            .filter(t -> t.yearMonth().equals(lastMonth))
+            .mapToLong(t -> t.isIncome() ? t.amount() : -t.amount())
+            .sum();
+
+        incomeLabel.setText(formatRupiah(incomeThisMonth));
+        expenseLabel.setText(formatRupiah(expenseThisMonth));
+        netLabel.setText(formatRupiah(netThisMonth));
+        double change = netLastMonth == 0 ? 0 : ((double)(netThisMonth - netLastMonth) / Math.max(1, Math.abs(netLastMonth))) * 100;
+        netSubtitle.setText(String.format("%+.1f%% vs bulan lalu", change));
+
+        // Trend 6 months
+        List<YearMonth> months = new ArrayList<>();
+        for (int i = 5; i >= 0; i--) {
+            months.add(now.minusMonths(i));
+        }
+        String[] monthLabels = new String[months.size()];
+        int[] incomes = new int[months.size()];
+        int[] expenses = new int[months.size()];
+        for (int i = 0; i < months.size(); i++) {
+            YearMonth ym = months.get(i);
+            monthLabels[i] = ym.getMonth().toString().substring(0, 3);
+            incomes[i] = (int) transactionSnapshot.transactions().stream().filter(t -> t.yearMonth().equals(ym) && t.isIncome()).mapToLong(TransactionStore.Transaction::amount).sum();
+            expenses[i] = (int) transactionSnapshot.transactions().stream().filter(t -> t.yearMonth().equals(ym) && !t.isIncome()).mapToLong(TransactionStore.Transaction::amount).sum();
+        }
+        trendChart.setData(monthLabels, incomes, expenses);
+
+        // Category breakdown (current month expenses)
+        List<CategoryPieChartPanel.Slice> slices = new ArrayList<>();
+        Color[] palette = new Color[]{color(37,99,235), color(5,150,105), color(220,38,38), color(245,158,11), color(100,116,139), color(14,165,233)};
+        Map<String, Long> groupedExpenses = transactionSnapshot.transactions().stream()
+            .filter(t -> t.yearMonth().equals(now) && !t.isIncome())
+            .collect(java.util.stream.Collectors.groupingBy(TransactionStore.Transaction::category, java.util.stream.Collectors.summingLong(TransactionStore.Transaction::amount)));
+        int idx = 0;
+        for (Map.Entry<String, Long> entry : groupedExpenses.entrySet()) {
+            Color c = palette[idx % palette.length];
+            slices.add(new CategoryPieChartPanel.Slice(entry.getKey(), entry.getValue(), c));
+            idx++;
+        }
+        pieChart.setSlices(slices);
+
+        // Recent transactions
+        recentTableModel.setRowCount(0);
+        long running = 0;
+        List<TransactionStore.Transaction> recent = transactionSnapshot.transactions().stream()
+            .sorted(Comparator.comparing(TransactionStore.Transaction::date).reversed())
+            .limit(10)
+            .toList();
+        for (TransactionStore.Transaction tx : recent) {
+            boolean income = tx.isIncome();
+            running += income ? tx.amount() : -tx.amount();
+            String nominal = formatSigned(tx.amount(), income);
+            recentTableModel.addRow(new Object[]{
+                tx.date().toString(),
+                tx.description() == null || tx.description().isBlank() ? "-" : tx.description(),
+                tx.category(),
+                nominal,
+                formatRupiah(running)
+            });
+        }
     }
 
     private JComponent buildUpcomingBills(){
@@ -302,46 +415,52 @@ public class HomePage extends JPanel {
 
     // Trend chart panel
     static class TrendChartPanel extends JPanel {
-        private final String[] months = {"Jun","Jul","Agu","Sep","Okt","Nov"};
-        private final int[] pemasukan = {10_000_000, 11_500_000, 9_800_000, 12_000_000, 11_200_000, 12_500_000};
-        private final int[] pengeluaran = {7_500_000, 8_200_000, 7_800_000, 8_500_000, 9_000_000, 8_750_000};
+        private String[] months = new String[0];
+        private int[] pemasukan = new int[0];
+        private int[] pengeluaran = new int[0];
+
+        void setData(String[] months, int[] pemasukan, int[] pengeluaran) {
+            this.months = months == null ? new String[0] : months;
+            this.pemasukan = pemasukan == null ? new int[0] : pemasukan;
+            this.pengeluaran = pengeluaran == null ? new int[0] : pengeluaran;
+            repaint();
+        }
+
         @Override protected void paintComponent(Graphics g){
             super.paintComponent(g);
             Graphics2D g2=(Graphics2D)g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             int w=getWidth(), h=getHeight();
             int padL=50, padR=16, padT=10, padB=30;
-            // Grid
             g2.setColor(new Color(226,232,240));
             int gridLines = 5;
             for(int i=0;i<=gridLines;i++){
                 int y = padT + (h-padT-padB) * i / gridLines;
                 g2.drawLine(padL, y, w-padR, y);
             }
-            // Axes labels
             g2.setColor(new Color(100,116,139));
             int cols = months.length;
             for(int i=0;i<cols;i++){
-                int x = padL + (w-padL-padR) * i / (cols-1);
+                int x = padL + (w-padL-padR) * (cols == 1 ? 0 : i) / Math.max(1, cols-1);
                 g2.drawString(months[i], x-8, h-10);
             }
-            // Scale
-            int max = 13_000_000; // simple cap for this dataset
-            // Lines
+            int maxIncome = java.util.Arrays.stream(pemasukan).max().orElse(1);
+            int maxExpense = java.util.Arrays.stream(pengeluaran).max().orElse(1);
+            int max = Math.max(1, Math.max(maxIncome, maxExpense));
             drawSeries(g2, pemasukan, new Color(5,150,105), padL,padR,padT,padB,w,h,max);
             drawSeries(g2, pengeluaran, new Color(220,38,38), padL,padR,padT,padB,w,h,max);
-            // Legend
             int ly = padT+10; int lx = w - padR - 160;
             drawLegend(g2, lx, ly, new Color(5,150,105), "Pemasukan");
             drawLegend(g2, lx+90, ly, new Color(220,38,38), "Pengeluaran");
             g2.dispose();
         }
         private void drawSeries(Graphics2D g2, int[] data, Color col, int padL,int padR,int padT,int padB,int w,int h,int max){
+            if(data.length == 0) return;
             g2.setColor(col); g2.setStroke(new BasicStroke(2f));
             Path2D p = new Path2D.Double();
             for(int i=0;i<data.length;i++){
                 double norm = Math.max(0, Math.min(1, data[i]/(double)max));
-                int x = padL + (w-padL-padR) * i / (data.length-1);
+                int x = padL + (w-padL-padR) * (data.length == 1 ? 0 : i) / Math.max(1, data.length-1);
                 int y = padT + (int)((1-norm) * (h-padT-padB));
                 if(i==0) p.moveTo(x,y); else p.lineTo(x,y);
             }
@@ -356,13 +475,13 @@ public class HomePage extends JPanel {
     // Pie chart for categories
     static class CategoryPieChartPanel extends JPanel {
         static class Slice { String name; double value; Color color; Slice(String n,double v,Color c){name=n;value=v;color=c;} }
-        private final List<Slice> slices = List.of(
-            new Slice("Makanan & Minuman", 2_500_000, new Color(37,99,235)),
-            new Slice("Transportasi", 1_500_000, new Color(5,150,105)),
-            new Slice("Belanja", 1_800_000, new Color(220,38,38)),
-            new Slice("Tagihan", 2_000_000, new Color(245,158,11)),
-            new Slice("Lainnya", 950_000, new Color(100,116,139))
-        );
+        private List<Slice> slices = new ArrayList<>();
+
+        void setSlices(List<Slice> slices){
+            this.slices = slices == null ? new ArrayList<>() : new ArrayList<>(slices);
+            repaint();
+        }
+
         @Override protected void paintComponent(Graphics g){
             super.paintComponent(g);
             Graphics2D g2=(Graphics2D)g.create();
@@ -370,6 +489,12 @@ public class HomePage extends JPanel {
             int w=getWidth(), h=getHeight();
             int size = Math.min(w,h) - 40; int cx = w/2 - size/2; int cy = h/2 - size/2;
             double total = slices.stream().mapToDouble(s->s.value).sum();
+            if (total <= 0) {
+                g2.setColor(new Color(148,163,184));
+                g2.drawString("Belum ada pengeluaran bulan ini", 16, 20);
+                g2.dispose();
+                return;
+            }
             double start = 90; // start at top
             for(Slice s : slices){
                 double extent = -360 * (s.value/total);
@@ -377,7 +502,6 @@ public class HomePage extends JPanel {
                 g2.fill(new Arc2D.Double(cx, cy, size, size, start, extent, Arc2D.PIE));
                 start += extent;
             }
-            // Simple legend
             int lx = 10, ly = 10;
             for(Slice s : slices){
                 g2.setColor(s.color); g2.fillRect(lx, ly, 12, 12);

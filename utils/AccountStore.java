@@ -9,6 +9,7 @@ public final class AccountStore {
     public static final String TYPE_BANK = "Bank";
     public static final String TYPE_WALLET = "Dompet Digital";
     public static final String TYPE_CASH = "Cash";
+    public static final String TYPE_CREDIT = "Kredit";
 
     private static final List<Account> accounts = new ArrayList<>();
     private static final List<Consumer<Snapshot>> listeners = new ArrayList<>();
